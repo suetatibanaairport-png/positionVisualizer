@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OBS Overlay - Meter Only</title>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <script>
+      (function(d) {
+        var config = { kitId: 'kaz6zgt', scriptTimeout: 3000, async: true },
+        h=d.documentElement,t=setTimeout(function(){h.className=h.className.replace(/\bwf-loading\b/g,"")+" wf-inactive";},config.scriptTimeout),
+        tk=d.createElement("script"),f=false,s=d.getElementsByTagName("script")[0],a;h.className+=" wf-loading";
+        tk.src='https://use.typekit.net/'+config.kitId+'.js';tk.async=true;
+        tk.onload=tk.onreadystatechange=function(){a=this.readyState;if(f||a&&a!="complete"&&a!="loaded")return;f=true;clearTimeout(t);try{Typekit.load(config)}catch(e){}};
+        s.parentNode.insertBefore(tk,s)
+      })(document);
+    </script>
+    <style>
+      html,body{margin:0;padding:0;background:transparent;overflow:hidden}
+      .overlay-root{width:100vw;height:100vh;display:flex;align-items:center;justify-content:center;background:transparent}
+      .meter-only{width:100%;max-width:1920px;padding:50px;margin:0;box-sizing:border-box}
+      /* Optional safe padding for cropping */
+      .pad{padding:0}
+    </style>
+</head>
+<body>
+  <div class="overlay-root">
+    <div id="meter-container" class="meter-only"></div>
+  </div>
+
+  <script>window.USE_MVVM = true;</script>
+  <script src="js/mvvm/event.js"></script>
+  <script src="js/mvvm/model.js"></script>
+  <script src="js/mvvm/viewModel.js"></script>
+  <script src="js/mvvm/bindings.js"></script>
+  <script src="js/meterRenderer.js"></script>
+  <script src="js/overlay.js"></script>
+</body>
+</html>
+
+

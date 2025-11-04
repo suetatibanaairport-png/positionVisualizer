@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>レバー角度ビジュアライザー</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="preload" href="assets/icon.svg" as="image" type="image/svg+xml">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <script>
+      (function(d) {
+        var config = { kitId: 'kaz6zgt', scriptTimeout: 3000, async: true },
+        h=d.documentElement,t=setTimeout(function(){h.className=h.className.replace(/\bwf-loading\b/g,"")+" wf-inactive";},config.scriptTimeout),
+        tk=d.createElement("script"),f=false,s=d.getElementsByTagName("script")[0],a;h.className+=" wf-loading";
+        tk.src='https://use.typekit.net/'+config.kitId+'.js';tk.async=true;
+        tk.onload=tk.onreadystatechange=function(){a=this.readyState;if(f||a&&a!="complete"&&a!="loaded")return;f=true;clearTimeout(t);try{Typekit.load(config)}catch(e){}};
+        s.parentNode.insertBefore(tk,s)
+      })(document);
+    </script>
+    <style>
+      /* 最低限のフォールバック（css/style.css が無い場合でも表示が崩れないように） */
+      .container{display:flex;gap:16px;align-items:flex-start;justify-content:center;padding:16px}
+      .controls{width:320px;border:1px solid #ddd;padding:16px;border-radius:8px}
+      .visualizer{flex:1;min-width:360px;border:1px solid #ddd;padding:16px;border-radius:8px}
+      .meter-container{position:relative;width:100%;max-width:900px;margin:0 auto}
+      #icons-container{position:absolute;left:0;top:0;pointer-events:none}
+      .history-panel{width:320px;border:1px solid #ddd;padding:16px;border-radius:8px}
+      button{cursor:pointer}
+    </style>
+    <script>
+      // キャッシュクリア用のビルドクエリ（簡易）
+      window.__buildTs = Date.now();
+    </script>
+</head>
+<body>
+    <div class="container">
+        <div class="controls">
+            <h2>デバイス設定</h2>
+            <div class="mode-selector">
+                <label>
+                    <input type="checkbox" id="mock-mode" checked>
+                    <span>モックモード（デバイスなしで動作）</span>
+                </label>
+            </div>
+            <div class="device-inputs">
+                <div class="device-group">
+                    <label>デバイス1 <span class="ip-label">IP:</span></label>
+                    <input type="text" id="device1-ip" placeholder="例: 192.168.1.100" class="device-ip">
+                    <input type="text" id="device1-name" placeholder="名前" value="出演者1">
+                    <input type="file" id="device1-icon" accept="image/*">
+                </div>
+                <div class="device-group">
+                    <label>デバイス2 <span class="ip-label">IP:</span></label>
+                    <input type="text" id="device2-ip" placeholder="例: 192.168.1.101" class="device-ip">
+                    <input type="text" id="device2-name" placeholder="名前" value="出演者2">
+                    <input type="file" id="device2-icon" accept="image/*">
+                </div>
+                <div class="device-group">
+                    <label>デバイス3 <span class="ip-label">IP:</span></label>
+                    <input type="text" id="device3-ip" placeholder="例: 192.168.1.102" class="device-ip">
+                    <input type="text" id="device3-name" placeholder="名前" value="出演者3">
+                    <input type="file" id="device3-icon" accept="image/*">
+                </div>
+                <div class="device-group">
+                    <label>デバイス4 <span class="ip-label">IP:</span></label>
+                    <input type="text" id="device4-ip" placeholder="例: 192.168.1.103" class="device-ip">
+                    <input type="text" id="device4-name" placeholder="名前" value="出演者4">
+                    <input type="file" id="device4-icon" accept="image/*">
+                </div>
+            </div>
+            <div id="manual-controls" style="display:none;">
+                <h3>手動操作（モックモード時）</h3>
+                <div class="device-group">
+                    <label id="slider1-label">出演者1: <span id="slider1-value">20</span>%</label>
+                    <input type="range" id="slider1" min="0" max="100" value="20">
+                </div>
+                <div class="device-group">
+                    <label id="slider2-label">出演者2: <span id="slider2-value">45</span>%</label>
+                    <input type="range" id="slider2" min="0" max="100" value="45">
+                </div>
+                <div class="device-group">
+                    <label id="slider3-label">出演者3: <span id="slider3-value">75</span>%</label>
+                    <input type="range" id="slider3" min="0" max="100" value="75">
+                </div>
+                <div class="device-group">
+                    <label id="slider4-label">出演者4: <span id="slider4-value">45</span>%</label>
+                    <input type="range" id="slider4" min="0" max="100" value="45">
+                </div>
+            </div>
+            <div class="control-buttons">
+                <button id="start-btn">開始</button>
+                <button id="stop-btn">停止</button>
+                <button id="clear-history-btn">履歴クリア</button>
+            </div>
+            <div class="log-replay-section">
+                <label>ログ再生</label>
+                <input type="file" id="log-file" accept="application/json,.json">
+                <div class="log-replay-buttons">
+                    <button id="play-log">再生</button>
+                    <button id="stop-log">停止</button>
+                </div>
+            </div>
+            <div class="range-settings-section">
+                <h3>値の範囲設定</h3>
+                <div class="device-group">
+                    <label>最小値</label>
+                    <input type="number" id="min-value" value="0" step="0.1">
+                </div>
+                <div class="device-group">
+                    <label>最大値</label>
+                    <input type="number" id="max-value" value="100" step="0.1">
+                </div>
+                <div class="device-group">
+                    <label>単位</label>
+                    <input type="text" id="value-unit" value="%" placeholder="例: %, °, kg">
+                </div>
+            </div>
+            <div class="status">
+                <span>更新間隔: <input type="number" id="poll-interval" value="200" min="50" max="1000" step="50"> ms</span>
+            </div>
+        </div>
+
+        <div class="visualizer">
+            <div class="meter-container" id="meter-container">
+                <div id="icons-container"></div>
+            </div>
+        </div>
+
+        <div class="history-panel">
+            <h3>数値変動履歴</h3>
+            <div id="history-content"></div>
+        </div>
+    </div>
+
+    <script>window.USE_MVVM = true;</script>
+    <script src="js/mvvm/event.js"></script>
+    <script src="js/mvvm/model.js"></script>
+    <script src="js/mvvm/viewModel.js"></script>
+    <script src="js/mvvm/bindings.js"></script>
+    <script src="js/meterRenderer.js"></script>
+    <script src="js/iconRenderer.js"></script>
+    <script src="js/replay.js"></script>
+    <script src="js/mock.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
+
+
