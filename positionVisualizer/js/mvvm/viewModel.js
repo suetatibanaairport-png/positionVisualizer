@@ -20,15 +20,33 @@
   MeterViewModel.prototype.setMockMode = function(v){ this.mockMode = !!v; };
   MeterViewModel.prototype.setPollInterval = function(ms){ this.pollIntervalMs = Math.max(50, Number(ms) || 200); };
   MeterViewModel.prototype.setMinValue = function(v){ 
-    const min = Number(v);
-    if (!isNaN(min) && min < this.maxValue) {
+    let min = Number(v);
+    if (!isNaN(min)) {
+      if (min < 0) min = 0;
+      if (min > 100) min = 100;
+      if (min >= this.maxValue) {
+        if (this.maxValue < 100) {
+          this.maxValue = Math.min(100, min + 1);
+        } else {
+          min = Math.max(0, this.maxValue - 1);
+        }
+      }
       this.minValue = min;
       this._notify();
     }
   };
   MeterViewModel.prototype.setMaxValue = function(v){ 
-    const max = Number(v);
-    if (!isNaN(max) && max > this.minValue) {
+    let max = Number(v);
+    if (!isNaN(max)) {
+      if (max < 0) max = 0;
+      if (max > 100) max = 100;
+      if (max <= this.minValue) {
+        if (this.minValue > 0) {
+          this.minValue = Math.max(0, max - 1);
+        } else {
+          max = Math.min(100, this.minValue + 1);
+        }
+      }
       this.maxValue = max;
       this._notify();
     }

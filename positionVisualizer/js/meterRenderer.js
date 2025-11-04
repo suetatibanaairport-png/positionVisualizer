@@ -218,10 +218,18 @@
         const displayValue = actualValues && actualValues[index] !== undefined 
           ? actualValues[index] 
           : val;
+        const roundedDisplay = Math.round(displayValue);
         const displayText = numbersOnly 
-          ? `${Math.round(displayValue)}${unit}` 
-          : `${names[index] || ''} ${Math.round(displayValue)}${unit}`;
+          ? `${roundedDisplay}${unit}` 
+          : `${names[index] || ''} ${roundedDisplay}${unit}`;
         text.textContent = displayText;
+
+        // Machine-readable attributes for UI parsing
+        g.setAttribute('data-percentage', String(Math.max(0, Math.min(100, val))));
+        g.setAttribute('data-actual', String(roundedDisplay));
+        g.setAttribute('data-unit', unit);
+        text.setAttribute('data-actual', String(roundedDisplay));
+        text.setAttribute('data-unit', unit);
 
         // Append in order: background, foreground, text (text on top)
         g.append(bgImage, fgImage, text);
@@ -236,10 +244,21 @@
           const displayValue = actualValues && actualValues[index] !== undefined 
             ? actualValues[index] 
             : val;
+          const roundedDisplay = Math.round(displayValue);
           const displayText = numbersOnly 
-            ? `${Math.round(displayValue)}${unit}` 
-            : `${names[index] || ''} ${Math.round(displayValue)}${unit}`;
+            ? `${roundedDisplay}${unit}` 
+            : `${names[index] || ''} ${roundedDisplay}${unit}`;
           t.textContent = displayText;
+          // Update machine-readable attributes
+          const clampedPercent = Math.max(0, Math.min(100, val));
+          const parentG = t.closest('g[data-perf]');
+          if (parentG) {
+            parentG.setAttribute('data-percentage', String(clampedPercent));
+            parentG.setAttribute('data-actual', String(roundedDisplay));
+            parentG.setAttribute('data-unit', unit);
+          }
+          t.setAttribute('data-actual', String(roundedDisplay));
+          t.setAttribute('data-unit', unit);
           t.setAttribute('y', String(textYOffset));
           t.setAttribute('font-weight', '700');
           t.setAttribute('font-style', 'normal');

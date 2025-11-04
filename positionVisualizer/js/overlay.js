@@ -1,5 +1,4 @@
 (function(){
-  // Version watcher: periodically fetch own HTML and reload if changed
   function startVersionWatcher() {
     let lastHash = null;
     function hashString(s){
@@ -20,7 +19,6 @@
       } catch(_) {}
     }
     setInterval(checkOnce, 3000);
-    // initial warm-up
     checkOnce();
   }
   startVersionWatcher();
@@ -88,6 +86,53 @@
 
   // Polling localStorage periodically (OBS may block storage events)
   setInterval(readFromLocalStorage, 700);
+
+  // WebSocket bridge (preferred)
+  function startWs(){
+    try {
+      const ws = new WebSocket('ws://127.0.0.1:8123');
+      ws.onmessage = (ev)=>{
+        try {
+          const msg = JSON.parse(ev.data || '{}');
+          if (msg && msg.type === 'state' && msg.payload) {
+            const d = msg.payload;
+            if (d && typeof d.svg === 'string' && d.svg) {
+              const container = document.getElementById('meter-container');
+              if (container) container.innerHTML = d.svg;
+              return;
+            }
+            if (d && Array.isArray(d.values)) {
+              const usedIcon = d.icon || icon;
+              MeterRenderer.updateMeter(d.values.slice(0,4), { names: ['','','',''], icon: usedIcon, numbersOnly: true, textYOffset: 15 });
+            }
+          }
+        } catch(_){}
+      };
+      ws.onclose = ()=>{ setTimeout(startWs, 1500); };
+      ws.onerror = ()=>{ try { ws.close(); } catch(_){} };
+    } catch(_) { setTimeout(startWs, 1500); }
+  }
+  startWs();
+
+  // Bridge polling (works across OBS browser source)
+  async function pollBridge(){
+    try {
+      const res = await fetch('http://127.0.0.1:8123/state', { cache: 'no-store' });
+      if (!res || !res.ok) return;
+      const d = await res.json();
+      if (d && typeof d.svg === 'string' && d.svg) {
+        const container = document.getElementById('meter-container');
+        if (container) container.innerHTML = d.svg;
+        return;
+      }
+      if (d && Array.isArray(d.values)) {
+        const usedIcon = d.icon || icon;
+        MeterRenderer.updateMeter(d.values.slice(0,4), { names: ['','','',''], icon: usedIcon, numbersOnly: true, textYOffset: 15 });
+      }
+    } catch(_){}
+  }
+  setInterval(pollBridge, 1500);
+  pollBridge();
 
   window.addEventListener('DOMContentLoaded', init);
   

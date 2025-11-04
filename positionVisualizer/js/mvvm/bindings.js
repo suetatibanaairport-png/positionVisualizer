@@ -5,7 +5,23 @@
     this.vm = vm;
     this.bc = null;
     try { this.bc = new BroadcastChannel('meter-overlay'); } catch(e) {}
+    this._ws = null;
+    this._wsTimer = null;
   }
+  MonitorBinding.prototype._ensureWs = function(){
+    if (this._ws && this._ws.readyState === WebSocket.OPEN) return this._ws;
+    try {
+      if (this._ws) { try { this._ws.close(); } catch(_){} this._ws = null; }
+      const ws = new WebSocket('ws://127.0.0.1:8123');
+      this._ws = ws;
+      ws.onopen = () => { /* ready */ };
+      ws.onclose = () => { if (this._wsTimer) clearTimeout(this._wsTimer); this._wsTimer = setTimeout(()=>this._ensureWs(), 1500); };
+      ws.onerror = () => { try { ws.close(); } catch(_){} };
+      ws.onmessage = () => {};
+    } catch(_) {}
+    if (!this._wsTimer) this._wsTimer = setTimeout(()=>this._ensureWs(), 1500);
+    return this._ws;
+  };
   MonitorBinding.prototype.broadcast = function(){
     const s = this.vm.toJSON();
     // Also serialize current SVG for mirroring
@@ -16,6 +32,24 @@
       localStorage.setItem('meter-state', JSON.stringify({ ...s, ts: Date.now() }));
       if (svgMarkup) localStorage.setItem('meter-svg', svgMarkup);
     } catch(e) {}
+    // WebSocket send to local bridge (preferred)
+    try {
+      const ws = this._ensureWs();
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'state', payload: { ...s, svg: svgMarkup } }));
+      }
+    } catch(_) {}
+    // HTTP fallback (optional)
+    try {
+      const payload = { ...s, svg: svgMarkup };
+      fetch('http://127.0.0.1:8123/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        cache: 'no-store',
+        keepalive: true
+      }).catch(()=>{});
+    } catch(_) {}
   };
   MonitorBinding.prototype.getVisibleIndices = function(){
     // In mock mode: show all → return null (no filtering)
@@ -35,6 +69,7 @@
   MonitorBinding.prototype.attach = function(){
     const vm = this.vm;
     MeterRenderer.initMeter(document.getElementById('meter-container'));
+    this._ensureWs();
     vm.onChange((state) => {
       const visibleIndices = this.getVisibleIndices();
       const actualValues = vm.getActualValues();
@@ -54,7 +89,11 @@
         if (el) {
           const actualValue = vm.getActualValue(idx);
           const unit = vm.unit || '%';
-          el.textContent = String(Math.round(actualValue)) + unit;
+          const rounded = Math.round(actualValue);
+          el.textContent = String(rounded) + unit;
+          // Machine-readable attributes for UI parsing
+          el.setAttribute('data-actual', String(rounded));
+          el.setAttribute('data-unit', unit);
         }
       });
       [['slider1-label',0],['slider2-label',1],['slider3-label',2],['slider4-label',3]].forEach(([id,i])=>{ 
@@ -90,10 +129,40 @@
     this.vm = vm;
     this.bc = null;
     try { this.bc = new BroadcastChannel('meter-overlay'); } catch(e) {}
+    this._ws = null;
+    this._wsTimer = null;
   }
+  OverlayBinding.prototype._ensureWs = function(onState){
+    if (this._ws && this._ws.readyState === WebSocket.OPEN) return this._ws;
+    try {
+      if (this._ws) { try { this._ws.close(); } catch(_){} this._ws = null; }
+      const ws = new WebSocket('ws://127.0.0.1:8123');
+      this._ws = ws;
+      ws.onopen = () => { /* connected */ };
+      ws.onclose = () => { if (this._wsTimer) clearTimeout(this._wsTimer); this._wsTimer = setTimeout(()=>this._ensureWs(onState), 1500); };
+      ws.onerror = () => { try { ws.close(); } catch(_){} };
+      ws.onmessage = (ev) => {
+        try {
+          const msg = JSON.parse(ev.data || '{}');
+          if (msg && msg.type === 'state' && msg.payload) {
+            onState && onState(msg.payload);
+          }
+        } catch(_){}
+      };
+    } catch(_) {}
+    if (!this._wsTimer) this._wsTimer = setTimeout(()=>this._ensureWs(onState), 1500);
+    return this._ws;
+  };
   OverlayBinding.prototype.attach = function(){
     const container = document.getElementById('meter-container');
     let initialized = false;
+
+    // Ensure there is at least a placeholder meter so overlay is never blank
+    try {
+      MeterRenderer.initMeter(container);
+      MeterRenderer.updateMeter([20,45,75,45], { names: ['','','',''], icon: 'assets/icon.svg', numbersOnly: true, textYOffset: 15 });
+      initialized = !!container.querySelector('svg[data-meter]');
+    } catch(e) {}
 
     const setHref = (img, href) => {
       if (!img) return;
@@ -171,6 +240,32 @@
     window.addEventListener('storage', (e)=>{ if (e.key==='meter-svg' && typeof e.newValue==='string') { if (!initialized) renderSvgFull(e.newValue); else patchSvg(e.newValue); } });
     // initial
     try { const svg = localStorage.getItem('meter-svg'); if (svg) renderSvgFull(svg); } catch(e){}
+
+    // WebSocket receiver (preferred across OBS)
+    const onWsState = (payload) => {
+      if (payload && typeof payload.svg === 'string' && payload.svg) {
+        if (!initialized) renderSvgFull(payload.svg); else patchSvg(payload.svg);
+        return;
+      }
+      if (payload && Array.isArray(payload.values)) {
+        const usedIcon = payload.icon || 'assets/icon.svg';
+        MeterRenderer.updateMeter(payload.values.slice(0,4), { names: ['','','',''], icon: usedIcon, numbersOnly: true, textYOffset: 15 });
+        initialized = true;
+      }
+    };
+    this._ensureWs(onWsState);
+
+    // Bridge polling (OBS/browser-source safe) as a fallback
+    async function pollBridge(){
+      try {
+        const res = await fetch('http://127.0.0.1:8123/state', { cache: 'no-store' });
+        if (!res || !res.ok) return;
+        const d = await res.json();
+        onWsState(d);
+      } catch(_){ }
+    }
+    setInterval(pollBridge, 1500);
+    pollBridge();
   };
 
   window.MVVM.Bindings = { MonitorBinding, OverlayBinding };
