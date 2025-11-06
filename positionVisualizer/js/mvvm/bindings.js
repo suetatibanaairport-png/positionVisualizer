@@ -57,7 +57,7 @@
     const mockMode = this.vm.mockMode;
     if (mockMode) return null;
     const visibleIndices = [];
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 6; i++) {
       const ipEl = document.getElementById(`device${i+1}-ip`);
       const ip = ipEl ? ipEl.value.trim() : '';
       if (ip) visibleIndices.push(i);

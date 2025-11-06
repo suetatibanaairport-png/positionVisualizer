@@ -10,7 +10,7 @@
   const strokeWidth = 100;
   const startAngle = -140;
   const endAngle = -40;
-  const LANE_OFFSETS = [-30, -10, 10, 30]
+  const LANE_OFFSETS = [-40, -20, 0, 20, 40, 60]
 
   const toRadians = (angle) => (angle * Math.PI) / 180;
 
@@ -159,7 +159,7 @@
       existing.set(g.getAttribute('data-perf'), g);
     });
 
-    values.slice(0, 4).forEach((val, index) => {
+    values.slice(0, 6).forEach((val, index) => {
       // Skip if this index should be hidden (when visibleIndices is specified)
       if (visibleIndices !== null && !visibleIndices.includes(index)) {
         // Remove icon if it exists
@@ -169,8 +169,10 @@
         return;
       }
 
-      const laneIndex = index % 4;
-      const pos = calculateIconPosition(val, laneIndex);
+      const laneIndex = index % LANE_OFFSETS.length;
+      const numericVal = Number(val);
+      const safeVal = Number.isFinite(numericVal) ? numericVal : 0;
+      const pos = calculateIconPosition(safeVal, laneIndex);
 
       let g = svg.querySelector(`g[data-perf="${index}"]`);
       if (!g) {
@@ -225,7 +227,7 @@
         text.textContent = displayText;
 
         // Machine-readable attributes for UI parsing
-        g.setAttribute('data-percentage', String(Math.max(0, Math.min(100, val))));
+        g.setAttribute('data-percentage', String(Math.max(0, Math.min(100, safeVal))));
         g.setAttribute('data-actual', String(roundedDisplay));
         g.setAttribute('data-unit', unit);
         text.setAttribute('data-actual', String(roundedDisplay));
@@ -250,7 +252,7 @@
             : `${names[index] || ''} ${roundedDisplay}${unit}`;
           t.textContent = displayText;
           // Update machine-readable attributes
-          const clampedPercent = Math.max(0, Math.min(100, val));
+          const clampedPercent = Math.max(0, Math.min(100, safeVal));
           const parentG = t.closest('g[data-perf]');
           if (parentG) {
             parentG.setAttribute('data-percentage', String(clampedPercent));

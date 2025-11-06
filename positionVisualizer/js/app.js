@@ -3,12 +3,14 @@
     const { MeterState, MeterViewModel, Bindings } = window.MVVM;
     window.addEventListener('DOMContentLoaded', () => {
       const initial = new MeterState(
-        [20,45,75,45],
+        [],
         [
-          document.getElementById('device1-name')?.value || '出演者1',
-          document.getElementById('device2-name')?.value || '出演者2',
-          document.getElementById('device3-name')?.value || '出演者3',
-          document.getElementById('device4-name')?.value || '出演者4'
+          document.getElementById('device1-name')?.value || '',
+          document.getElementById('device2-name')?.value || '',
+          document.getElementById('device3-name')?.value || '',
+          document.getElementById('device4-name')?.value || '',
+          document.getElementById('device5-name')?.value || '',
+          document.getElementById('device6-name')?.value || ''
         ],
         'assets/icon.svg'
       );
@@ -22,7 +24,7 @@
       document.getElementById('clear-history-btn').addEventListener('click', () => {
         const el = document.getElementById('history-content'); el.innerHTML = '';
       });
-      ['device1-name','device2-name','device3-name','device4-name'].forEach((id, idx) => {
+      ['device1-name','device2-name','device3-name','device4-name','device5-name','device6-name'].forEach((id, idx) => {
         const el = document.getElementById(id);
         if (!el) return;
         const handler = () => vm.setName(idx, el.value);
@@ -39,7 +41,7 @@
       });
       
       // Listen to IP address changes to update visible icons
-      ['device1-ip', 'device2-ip', 'device3-ip', 'device4-ip'].forEach((id) => {
+      ['device1-ip', 'device2-ip', 'device3-ip', 'device4-ip','device5-ip','device6-ip'].forEach((id) => {
         const el = document.getElementById(id);
         if (el) {
           el.addEventListener('input', () => {
@@ -108,7 +110,7 @@
       }
       
       // Per-device icon uploads
-      [['device1-icon',0],['device2-icon',1],['device3-icon',2],['device4-icon',3]].forEach(([id, idx]) => {
+      [['device1-icon',0],['device2-icon',1],['device3-icon',2],['device4-icon',3],['device5-icon',4],['device6-icon',5]].forEach(([id, idx]) => {
         const input = document.getElementById(id);
         if (!input) return;
         input.addEventListener('change', () => {
@@ -135,6 +137,10 @@
 
       // Sync initial mock mode from checkbox BEFORE first render
       vm.setMockMode(mockToggle.checked);
+      // In mock mode, show four dummy icons/values; otherwise, start empty
+      if (mockToggle.checked) {
+        [20,45,75,45].forEach((v, i) => vm.setValue(i, v));
+      }
 
       // View + Sync
       const binding = new Bindings.MonitorBinding(vm);

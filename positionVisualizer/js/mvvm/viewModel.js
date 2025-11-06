@@ -70,10 +70,10 @@
     return this.minValue + (percentage / 100) * range;
   };
   MeterViewModel.prototype.setName = function(index, name){
-    if (index < 0 || index > 3) return; this.state.names[index] = String(name || '').trim() || this.state.names[index]; this._notify();
+    if (index < 0 || index > 5) return; this.state.names[index] = String(name || '').trim() || this.state.names[index]; this._notify();
   };
   MeterViewModel.prototype.setValue = function(index, value){
-    if (index < 0 || index > 3) return; 
+    if (index < 0 || index > 5) return; 
     // Store actual value, but normalize to 0-100 for internal state
     const actualValue = Number(value) || 0;
     const clamped = Math.max(this.minValue, Math.min(this.maxValue, actualValue));
@@ -84,7 +84,7 @@
   
   // Get actual value (not normalized) for display
   MeterViewModel.prototype.getActualValue = function(index){
-    if (index < 0 || index > 3) return 0;
+    if (index < 0 || index > 5) return 0;
     return this.denormalizeValue(this.state.values[index]);
   };
   
@@ -107,7 +107,7 @@
   };
 
   MeterViewModel.prototype.toJSON = function(){
-    return { values: this.state.values.slice(0,4), names: this.state.names.slice(0,4), icon: this.state.icon, icons: this.state.icons.slice(0,4) };
+    return { values: this.state.values.slice(0,6), names: this.state.names.slice(0,6), icon: this.state.icon, icons: this.state.icons.slice(0,6) };
   };
 
   MeterViewModel.prototype.start = function(){
@@ -116,7 +116,7 @@
     const tick = () => {
       const range = this.maxValue - this.minValue;
       const values = [0,0,0,0].map(() => this.minValue + Math.random() * range);
-      for (let i=0;i<4;i++) {
+      for (let i=0;i<6;i++) {
         const actualValue = values[i];
         const normalized = this.normalizeValue(actualValue);
         this.state.values[i] = normalized;
