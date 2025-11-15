@@ -571,15 +571,11 @@
       });
     }
 
-    // Range settings are now in settings window - listen for changes
-    let settingsBC = null;
-    try {
-      settingsBC = new BroadcastChannel('meter-settings');
-    } catch (e) {
-      console.warn('BroadcastChannel not available for settings');
-    }
-
-    // Update slider ranges when settings change
+    // Bind range settings
+    const minValueInput = document.getElementById('min-value');
+    const maxValueInput = document.getElementById('max-value');
+    const unitInput = document.getElementById('value-unit');
+    
     const updateSliderRanges = () => {
       for (let i = 1; i <= 4; i++) {
         const el = document.getElementById(`slider${i}`);
@@ -593,10 +589,33 @@
         }
       }
     };
-    
-    vm.onChange(() => {
-      updateSliderRanges();
-    });
+
+    if (minValueInput) {
+      minValueInput.addEventListener('change', () => {
+        vm.setMinValue(minValueInput.value);
+        updateSliderRanges();
+      });
+      minValueInput.addEventListener('input', () => {
+        vm.setMinValue(minValueInput.value);
+        updateSliderRanges();
+      });
+    }
+
+    if (maxValueInput) {
+      maxValueInput.addEventListener('change', () => {
+        vm.setMaxValue(maxValueInput.value);
+        updateSliderRanges();
+      });
+      maxValueInput.addEventListener('input', () => {
+        vm.setMaxValue(maxValueInput.value);
+        updateSliderRanges();
+      });
+    }
+
+    if (unitInput) {
+      unitInput.addEventListener('change', () => vm.setUnit(unitInput.value));
+      unitInput.addEventListener('input', () => vm.setUnit(unitInput.value));
+    }
 
     // Bind icon uploads
     for (let i = 1; i <= 6; i++) {
@@ -645,8 +664,7 @@
       }
     });
 
-    // Replay controls are now in settings window
-    // Create replay controller for recording (used by MonitorBinding)
+    // Bind replay controls
     if (window.Replay) {
       this.replayController = window.Replay.create(vm);
       
@@ -656,108 +674,69 @@
         monitorBinding._recordingController = this.replayController;
       }
       
-      // Listen for commands from settings window
-      if (settingsBC) {
-        settingsBC.onmessage = (ev) => {
-          const msg = ev.data;
-          if (msg && msg.type === 'settings-update') {
-            // Range settings update
-            const data = msg.data;
-            if (data.minValue !== undefined) {
-              vm.setMinValue(data.minValue);
-            }
-            if (data.maxValue !== undefined) {
-              vm.setMaxValue(data.maxValue);
-            }
-            if (data.unit !== undefined) {
-              vm.setUnit(data.unit);
-            }
-          } else if (msg && msg.type === 'settings-request-sync') {
-            // Send current settings to settings window
-            settingsBC.postMessage({
-              type: 'settings-sync',
-              data: {
-                minValue: vm.minValue,
-                maxValue: vm.maxValue,
-                unit: vm.unit
-              }
-            });
-          } else if (msg && msg.type === 'replay-load-and-play') {
-            // Replay load and play
-            if (this.replayController) {
-              // Create a File-like object from the data
-              const blob = new Blob([JSON.stringify(msg.data, null, 2)], { type: 'application/json' });
-              const file = new File([blob], msg.filename || 'log.json', { type: 'application/json' });
-              this.replayController.loadFile(file, (err, meta) => {
-                if (err) {
-                  console.error('Replay load error:', err);
-                  return;
-                }
-                vm.setMockMode(true);
-                this.replayController.play();
-              });
-            }
-          } else if (msg && msg.type === 'replay-stop') {
-            // Replay stop
-            if (this.replayController) {
-              this.replayController.stop();
-            }
-          } else if (msg && msg.type === 'record-start') {
-            // Recording start
-            if (this.replayController) {
-              this.replayController.startRecording();
-              // Send status update to settings window
-              const status = this.replayController.getRecordingStatus();
-              settingsBC.postMessage({ type: 'record-status', status: status });
-            }
-          } else if (msg && msg.type === 'record-stop') {
-            // Recording stop
-            if (this.replayController) {
-              const data = this.replayController.stopRecording();
-              if (data && data.length > 0) {
-                this.replayController.saveRecordedData(data);
-              }
-              // Send status update to settings window
-              const status = this.replayController.getRecordingStatus();
-              settingsBC.postMessage({ type: 'record-status', status: status });
-            }
-          } else if (msg && msg.type === 'record-status-request') {
-            // Recording status request
-            if (this.replayController) {
-              const status = this.replayController.getRecordingStatus();
-              settingsBC.postMessage({ type: 'record-status', status: status });
-            }
+      const logFile = document.getElementById('log-file');
+      const playBtn = document.getElementById('play-log');
+      const stopBtn = document.getElementById('stop-log');
+      if (playBtn && logFile) {
+        playBtn.addEventListener('click', () => {
+          const f = logFile.files && logFile.files[0];
+          if (!f) {
+            alert('ログファイル（JSON）を選択してください');
+            return;
           }
-        };
+          this.replayController.loadFile(f, (err, meta) => {
+            if (err) {
+              alert('読み込み失敗: ' + err.message);
+              return;
+            }
+            vm.setMockMode(true);
+            this.replayController.play();
+          });
+        });
       }
-    }
-    
-    // Open settings window button
-    const openSettingsBtn = document.getElementById('open-settings-btn');
-    if (openSettingsBtn) {
-      let settingsWindow = null;
-      openSettingsBtn.addEventListener('click', () => {
-        if (settingsWindow && !settingsWindow.closed) {
-          settingsWindow.focus();
+      if (stopBtn) {
+        stopBtn.addEventListener('click', () => {
+          if (this.replayController) this.replayController.stop();
+        });
+      }
+      
+      // Bind recording controls
+      const startRecordBtn = document.getElementById('start-record');
+      const stopRecordBtn = document.getElementById('stop-record');
+      const recordStatusEl = document.getElementById('log-record-status');
+      
+      const updateRecordStatus = () => {
+        if (!recordStatusEl) return;
+        const status = this.replayController.getRecordingStatus();
+        if (status.isRecording) {
+          recordStatusEl.textContent = `記録中... (${status.recordCount}件)`;
+          recordStatusEl.style.color = '#d32f2f';
         } else {
-          settingsWindow = window.open('settings.html', 'settings', 'width=500,height=600,resizable=yes,scrollbars=yes');
-          if (settingsWindow) {
-            // Send initial settings sync when window opens
-            setTimeout(() => {
-              if (settingsBC) {
-                settingsBC.postMessage({
-                  type: 'settings-sync',
-                  data: {
-                    minValue: vm.minValue,
-                    maxValue: vm.maxValue,
-                    unit: vm.unit
-                  }
-                });
-              }
-            }, 500);
-          }
+          recordStatusEl.textContent = '停止中';
+          recordStatusEl.style.color = '#666';
         }
-      });
+      };
+      
+      if (startRecordBtn) {
+        startRecordBtn.addEventListener('click', () => {
+          this.replayController.startRecording();
+          updateRecordStatus();
+        });
+      }
+      
+      if (stopRecordBtn) {
+        stopRecordBtn.addEventListener('click', () => {
+          const data = this.replayController.stopRecording();
+          updateRecordStatus();
+          if (data && data.length > 0) {
+            this.replayController.saveRecordedData(data);
+          }
+        });
+      }
+      
+      // Update status periodically
+      setInterval(updateRecordStatus, 500);
+      updateRecordStatus();
     }
   };
 
