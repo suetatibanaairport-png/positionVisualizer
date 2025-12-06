@@ -78,6 +78,10 @@ public:
     return _smoothedValue;
   }
 
+  void update() override {
+    return;
+  }
+
 private:
   int _simulatedValue;     // シミュレートされた現在値
   int _smoothedValue;      // 平滑化された値
@@ -159,7 +163,7 @@ public:
       unsigned long currentTime = millis();
       unsigned long elapsed = currentTime - _lastToggleTime;
 
-      if ((_state && elapsed >= _onTimeMs) || (!_state && elapsed >= _offTimeMs)) {
+      if ((_state && elapsed >= (unsigned long ) _onTimeMs) || (!_state && elapsed >= (unsigned long ) _offTimeMs)) {
         _state = !_state;
         _lastToggleTime = currentTime;
         DEBUG_VERBOSE(String("MockLed [") + _name + "] blink state changed to " +
@@ -205,7 +209,10 @@ private:
 class MockButtonHandler : public IButtonHandler {
 public:
   MockButtonHandler(const char* name = "Button")
-    : _name(name), _state(false), _lastState(false), _lastChangeTime(0) {
+    : _name(name), _state(false), _lastState(false), _lastChangeTime(0) 
+  {
+    _pressCaliButtonCallback = nullptr;
+    _releasedCaliButtonCallback = nullptr;
   }
 
   void begin() override {
@@ -269,11 +276,26 @@ public:
     Serial.println(status);
   }
 
+  // ボタンを押した時のコールバックを設定
+  void setPressCaliButtonCallback(PressCaliButtonCallback callback) override
+  {
+    _pressCaliButtonCallback = callback;
+  }
+
+  // ボタンを離した時のコールバックを設定
+  void setReleaseCaliButtonCallback(ReleasedCaliButtonCallback callback) override
+  {
+    _releasedCaliButtonCallback = callback;
+  }
+
 private:
   const char* _name;            // ボタン名（識別用）
   bool _state;                  // 現在の状態
   bool _lastState;              // 前回の状態
   unsigned long _lastChangeTime; // 最後に状態が変化した時間
+
+  PressCaliButtonCallback _pressCaliButtonCallback;
+  ReleasedCaliButtonCallback _releasedCaliButtonCallback;
 };
 
 // シミュレーション用ストレージ管理実装

@@ -41,6 +41,7 @@ void RealWiFiManager::begin()
   _wifiManager.setDebugOutput(true);
 
   // デバイス名の設定（アクセスポイントモード時のSSID）
+  DEBUG_WARNING("WiFiManager autoConnect");
   String apName = "LeverSetup-" + _deviceId;
   _wifiManager.autoConnect(apName.c_str());
 
@@ -52,11 +53,28 @@ void RealWiFiManager::begin()
     _networkStatus = DISCONNECTED;
     DEBUG_WARNING("WiFi未接続");
   }
+  /*
+  bool done = true;
+  Serial.print("WiFi connecting");
+  auto last = millis();
+  while (WiFi.status() != WL_CONNECTED && last + 1000 > millis()) {
+      delay(500);
+      Serial.print(".");
+  }
+  if (WiFi.status() == WL_CONNECTED) {
+      Serial.print("WIFI_CONNECTED");
+      done = false;
+  } else {
+      Serial.println("retry");
+      WiFi.disconnect();
+      WiFi.reconnect();
+  }
+  */
 
   // HTTPサーバーのセットアップ
   setupHttpHandlers();
   _webServer.begin();
-  DEBUG_INFO("HTTPサーバー開始: ポート " + String(_webServer.port()));
+  DEBUG_INFO("HTTPサーバー開始: ポート " + String(_httpPort));
 
   // UDPサーバーの開始
   if (_udp.begin(UDP_DISCOVERY_PORT)) {
@@ -71,9 +89,10 @@ void RealWiFiManager::update()
 {
   // WiFi状態の更新（5秒ごと）
   unsigned long currentMillis = millis();
-  if (currentMillis - _lastStatusCheck > 5000) {
+  if (currentMillis - _lastStatusCheck > 200) {
     _lastStatusCheck = currentMillis;
 
+    Serial.println(WiFi.status());
     if (WiFi.status() == WL_CONNECTED) {
       if (_networkStatus != CONNECTED) {
         _networkStatus = CONNECTED;
@@ -83,7 +102,11 @@ void RealWiFiManager::update()
       if (_networkStatus != DISCONNECTED) {
         _networkStatus = DISCONNECTED;
         DEBUG_WARNING("WiFi接続状態: 未接続");
+
       }
+      Serial.println("reconnect");
+      //WiFi.disconnect();
+      Serial.println(WiFi.reconnect());
     }
   }
 
