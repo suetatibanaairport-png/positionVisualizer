@@ -6,8 +6,8 @@
 #include "../core/HardwareFactory.h"
 
 // コンストラクタ
-SingleLedDisplay::SingleLedDisplay(uint8_t ledPin)
-    : _currentMode(OFF), _ledPin(ledPin), _errorCode(0),
+SingleLedDisplay::SingleLedDisplay()
+    : _currentMode(OFF), _errorCode(0),
       _lastUpdateTime(0), _patternStep(0), _ledState(false)
 {
 }
@@ -16,21 +16,15 @@ SingleLedDisplay::SingleLedDisplay(uint8_t ledPin)
 SingleLedDisplay::~SingleLedDisplay()
 {
   if (_led) {
-    delete _led;
     _led = nullptr;
   }
 }
 
 // 初期化
-void SingleLedDisplay::begin()
+void SingleLedDisplay::begin(ILedController* controller)
 {
-  // LED制御オブジェクトを作成
-  _led = HardwareFactory::createLedController(_ledPin);
+  _led = controller;
   _led->begin();
-
-  // 初期状態は通電表示
-  setMode(POWER_ON);
-
   DEBUG_INFO("SingleLedDisplay initialized");
 }
 

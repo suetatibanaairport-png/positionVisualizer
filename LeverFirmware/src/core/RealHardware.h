@@ -16,7 +16,7 @@
 class RealPotentiometerReader : public IPotentiometerReader {
 public:
   RealPotentiometerReader(uint8_t pin = A0, uint8_t smoothingFactor = 10)
-    : _pin(pin), _smoothingFactor(smoothingFactor), _lastValue(0) {
+    : _pin(pin), _smoothingFactor(smoothingFactor), _lastValue(0) {    
   }
 
   void begin() {
@@ -61,6 +61,10 @@ public:
       return _sum / _samplesValid;
     }
     return newValue; // フォールバック
+  }
+
+  void update() override {
+    return;
   }
 
 private:
@@ -112,7 +116,7 @@ public:
       unsigned long currentTime = millis();
       unsigned long elapsed = currentTime - _lastToggleTime;
 
-      if ((_state && elapsed >= _onTimeMs) || (!_state && elapsed >= _offTimeMs)) {
+      if ((_state && elapsed >= (unsigned long ) _onTimeMs) || (!_state && elapsed >= (unsigned long ) _offTimeMs)) {
         _state = !_state;
         digitalWrite(_pin, _state ? HIGH : LOW);
         _lastToggleTime = currentTime;
@@ -134,7 +138,10 @@ class RealButtonHandler : public IButtonHandler {
 public:
   RealButtonHandler(uint8_t pin, bool pullUp = true)
     : _pin(pin), _pullUp(pullUp), _state(false), _lastState(false),
-      _lastDebounceTime(0), _lastChangeTime(0) {
+      _lastDebounceTime(0), _lastChangeTime(0) 
+  {
+    _pressCaliButtonCallback = nullptr;
+    _releasedCaliButtonCallback = nullptr;
   }
 
   void begin() override {
@@ -178,6 +185,18 @@ public:
     _lastState = _state;
   }
 
+  // ボタンを押した時のコールバックを設定
+  void setPressCaliButtonCallback(PressCaliButtonCallback callback) override
+  {
+    _pressCaliButtonCallback = callback;
+  }
+
+  // ボタンを離した時のコールバックを設定
+  void setReleaseCaliButtonCallback(ReleasedCaliButtonCallback callback) override
+  {
+    _releasedCaliButtonCallback = callback;
+  }
+
 private:
   static const int DEBOUNCE_DELAY = 50; // デバウンス時間（ms）
 
@@ -188,6 +207,9 @@ private:
   bool _lastRawState;      // 前回の生の状態
   unsigned long _lastDebounceTime;  // 最後に状態が変化した時間
   unsigned long _lastChangeTime;    // デバウンス後に状態が変化した時間
+
+  PressCaliButtonCallback _pressCaliButtonCallback;
+  ReleasedCaliButtonCallback _releasedCaliButtonCallback;
 
   // ボタンの生の状態を読み取る（プルアップの場合は反転）
   bool readRawState() {

@@ -87,7 +87,4 @@ private:
   static bool _simulationMode;
 };
 
-// 静的メンバの初期化
-bool HardwareFactory::_simulationMode = SIMULATION_MODE;
-
 #endif // HARDWARE_FACTORY_H

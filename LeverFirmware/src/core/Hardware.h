@@ -10,16 +10,26 @@
 
 #include <Arduino.h>
 
+// キャリブレーションボタンコントローラーが使用するコールバック関数の型定義
+using PressCaliButtonCallback = std::function<void()>;
+using ReleasedCaliButtonCallback = std::function<void()>;
+
 // ポテンショメータ読取りインターフェース
 class IPotentiometerReader {
 public:
   virtual ~IPotentiometerReader() {}
+
+  // ポテンショメーターの初期化
+  virtual void begin() = 0;
 
   // 生の値を読み取る（0-1023の範囲）
   virtual int readRawValue() = 0;
 
   // 平滑化された値を読み取る
   virtual int readSmoothedValue() = 0;
+
+  // 状態更新（ループ内で呼び出し）
+  virtual void update() = 0;
 };
 
 // LED制御インターフェース
@@ -65,6 +75,12 @@ public:
 
   // 状態更新（ループ内で呼び出し）
   virtual void update() = 0;
+
+    // ボタンを押した時のコールバックを設定
+  virtual void setPressCaliButtonCallback(PressCaliButtonCallback callback) = 0;
+
+  // ボタンを離した時のコールバックを設定
+  virtual void setReleaseCaliButtonCallback(ReleasedCaliButtonCallback callback) = 0;
 };
 
 // ストレージアクセスインターフェース
@@ -95,7 +111,7 @@ public:
 
 // デバッグレベル
 #ifndef DEBUG_LEVEL
-  #define DEBUG_LEVEL 0 // 0:なし, 1:エラーのみ, 2:警告, 3:情報, 4:詳細
+  #define DEBUG_LEVEL 4 // 0:なし, 1:エラーのみ, 2:警告, 3:情報, 4:詳細
 #endif
 
 // デバッグ出力マクロ

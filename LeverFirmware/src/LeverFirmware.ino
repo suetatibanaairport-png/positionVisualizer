@@ -23,7 +23,7 @@
  */
 
 #include <Arduino.h>
-#include "src/LeverController.h"
+#include "../src/LeverController.h"
 
 // シミュレーションモード設定
 // SIMULATION_MODE はコンパイル時に定義される想定
@@ -42,6 +42,7 @@ void setup() {
   Serial.println("Mode: " + String(SIMULATION_MODE ? "SIMULATION" : "HARDWARE"));
 
   // レバーコントローラの初期化
+  //leverController.resetWiFiSettings();
   leverController.begin();
 }
 

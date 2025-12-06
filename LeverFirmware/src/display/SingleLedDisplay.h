@@ -28,12 +28,12 @@ public:
   };
 
   // コンストラクタ
-  SingleLedDisplay(uint8_t ledPin);
+  SingleLedDisplay();
   ~SingleLedDisplay();
-
+  
   // 初期化
-  void begin();
-
+  void begin(ILedController*);
+  
   // 表示モードを設定
   void setMode(DisplayMode mode);
 

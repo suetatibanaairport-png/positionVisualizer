@@ -28,7 +28,7 @@ LeverController::LeverController(bool simulationMode)
   _network = HardwareFactory::createNetworkManager(HTTP_PORT);
 
   // コンポーネントの初期設定
-  _ledDisplay = SingleLedDisplay(LED_PIN);
+  _ledDisplay =  SingleLedDisplay();
 }
 
 // デストラクタ
@@ -60,19 +60,18 @@ void LeverController::begin()
 
   // ハードウェアコンポーネントの初期化
   _potReader->begin();
-  _led->begin();
   _calibButton->begin();
 
   // LEDディスプレイの初期化
-  _ledDisplay.begin();
+  _ledDisplay.begin(_led);
   _ledDisplay.setMode(SingleLedDisplay::POWER_ON); // 電源ON表示モード
 
   // キャリブレーションの初期化
   _calibration.begin();
 
   // ボタンのコールバック設定
-  _calibButton->setPressCallback([this]() { this->onCalibButtonPressed(); });
-  _calibButton->setReleaseCallback([this]() { this->onCalibButtonReleased(); });
+  _calibButton->setPressCaliButtonCallback([this]() { this->onCalibButtonPressed(); });
+  _calibButton->setReleaseCaliButtonCallback([this]() { this->onCalibButtonReleased(); });
 
   // APIコントローラーのコールバック設定
   _apiController.setGetLeverValueCallback([this]() { return this->getLeverValue(); });
@@ -83,6 +82,8 @@ void LeverController::begin()
   _apiController.setResetCalibrationCallback([this]() { this->resetCalibration(); });
   _apiController.setSetLedModeCallback([this](int mode) { this->setLedMode(mode); });
 
+
+  
   // ネットワークの初期化
   String deviceId = "lever" + String(ESP.getChipId() & 0xFFFF, HEX);
   _network->setDeviceId(deviceId);
@@ -138,12 +139,12 @@ void LeverController::update()
   }
 
   // ネットワークにデータを送信
-  _network->updateLeverValue(rawValue, _calibratedValue, _calibration.isCalibrated(),
-                            _calibration.getMinValue(), _calibration.getMaxValue());
+  _network->updateLeverValue(rawValue, _calibratedValue, (!_isCalibrating),
+                            _minValue, _maxValue);
 
   // WiFi接続完了後、正常稼働モードに移行（初回のみ）
   static bool normalOperationSet = false;
-  if (_network->getStatus() == CONNECTED && !normalOperationSet && _calibration.isCalibrated()) {
+  if (_network->getStatus() == CONNECTED && !normalOperationSet && (!_isCalibrating)) {
     _ledDisplay.setMode(SingleLedDisplay::NORMAL_OPERATION);
     normalOperationSet = true;
   }
@@ -253,3 +254,6 @@ void LeverController::getCalibrationInfo(int& minVal, int& maxVal, bool& isCalib
   maxVal = max;
   isCalibrated = calibrated;
 }
+
+// 静的メンバの初期化
+bool HardwareFactory::_simulationMode = SIMULATION_MODE;

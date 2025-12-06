@@ -15,6 +15,7 @@
 #include <WiFiUdp.h>
 #include <ArduinoJson.h>
 #include "NetworkInterface.h"
+#include "core/Hardware.h"
 
 // UDPディスカバリー用定数
 #define UDP_DISCOVERY_PORT 4210
@@ -67,6 +68,7 @@ private:
   int _minValue;
   int _maxValue;
   uint8_t _errorCode;
+  uint16_t _httpPort;
 
   // HTTPハンドラーのセットアップ
   void setupHttpHandlers();
@@ -126,6 +128,7 @@ private:
   int _minValue;
   int _maxValue;
   uint8_t _errorCode;
+  uint16_t _httpPort;
 };
 
 #endif // WIFI_MANAGER_H

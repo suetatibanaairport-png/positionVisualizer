@@ -21,19 +21,19 @@
 // 2: 警告とエラー
 // 3: 情報、警告、エラー
 // 4: 詳細情報（開発時のみ使用）
-#define DEBUG_LEVEL 3
+#define DEBUG_LEVEL 4
 
 // ピン設定（ESP8266）
 #define POT_PIN A0       // ポテンショメータ入力ピン
 #define LED_PIN D2       // ステータスLED出力ピン
-#define CALIB_BUTTON_PIN D0 // キャリブレーションボタンピン（内部プルアップ、押下=LOW）
+#define CALIB_BUTTON_PIN D1 // キャリブレーションボタンピン（内部プルアップ、押下=LOW）
 
 // ネットワーク設定
 #define HTTP_PORT 80            // Webサーバーのポート番号
 #define UDP_DISCOVERY_PORT 4210 // UDPディスカバリー用のポート番号
 
 // センサー読み取り設定
-#define SMOOTHING_FACTOR 8      // センサー値の平滑化係数（大きいほど滑らか）
+#define SMOOTHING_FACTOR 1      // センサー値の平滑化係数（大きいほど滑らか）
 #define CALIB_TIMEOUT 10000     // キャリブレーションタイムアウト（ミリ秒）
 #define UPDATE_INTERVAL 50      // データ更新間隔（ミリ秒）- 20Hz
 
