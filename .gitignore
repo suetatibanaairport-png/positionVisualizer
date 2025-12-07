@@ -25,3 +25,6 @@ Thumbs.db
 dist/
 build/
 
+# Architecture Documentation
+ARCHITECTURE.md
+
