@@ -70,6 +70,10 @@ private:
   uint8_t _errorCode;
   uint16_t _httpPort;
 
+  // 追加: 再接続試行回数のカウンターと最終再接続時間
+  int _reconnectAttemptCount;
+  unsigned long _lastReconnectAttempt;
+
   // HTTPハンドラーのセットアップ
   void setupHttpHandlers();
 

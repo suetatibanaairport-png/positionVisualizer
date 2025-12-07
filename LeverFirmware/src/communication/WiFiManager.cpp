@@ -19,7 +19,9 @@ RealWiFiManager::RealWiFiManager(uint16_t httpPort)
     _isCalibrated(false),
     _minValue(0),
     _maxValue(1023),
-    _errorCode(0)
+    _errorCode(0),
+    _reconnectAttemptCount(0), // 追加: 再接続カウンター初期化
+    _lastReconnectAttempt(0) // 追加: 最終再接続時間の初期化
 {
   _deviceId = "lever" + String(ESP.getChipId() & 0xFFFF, HEX); // チップIDからデフォルトのデバイスIDを生成
 }
@@ -36,40 +38,73 @@ void RealWiFiManager::begin()
 {
   DEBUG_INFO("WiFiManager初期化開始");
 
+  // WiFi設定の最適化
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleepMode(WIFI_NONE_SLEEP);
+  WiFi.setAutoReconnect(true);
+  WiFi.persistent(true);  // 接続情報を永続化（フラッシュメモリに保存）
+
   // WiFi接続設定
   _wifiManager.setConfigPortalTimeout(180); // ポータルのタイムアウト時間（秒）
   _wifiManager.setDebugOutput(true);
 
   // デバイス名の設定（アクセスポイントモード時のSSID）
-  DEBUG_WARNING("WiFiManager autoConnect");
   String apName = "LeverSetup-" + _deviceId;
-  _wifiManager.autoConnect(apName.c_str());
 
-  // WiFi接続状態の初期確認
-  if (WiFi.status() == WL_CONNECTED) {
-    _networkStatus = CONNECTED;
-    DEBUG_INFO("WiFi接続成功: " + WiFi.localIP().toString());
+  // 設定済みの場合は自動接続を試み、未設定の場合はポータル起動
+  DEBUG_INFO("WiFiManager autoConnectを開始...");
+  if (_wifiManager.autoConnect(apName.c_str())) {
+    // この時点でWiFiManagerが接続試行を行ったが、実際に接続されているかは別途確認
+
+    bool connected = false;
+    int attempts = 0;
+    const int MAX_INIT_ATTEMPTS = 5; // 初期接続の最大試行回数
+
+    DEBUG_INFO("WiFi接続確認開始...");
+
+    while (!connected && attempts < MAX_INIT_ATTEMPTS) {
+      attempts++;
+      DEBUG_INFO("接続試行 " + String(attempts) + "/" + String(MAX_INIT_ATTEMPTS));
+
+      // 1秒間のタイムアウトで接続を確認
+      unsigned long startTime = millis();
+      while (WiFi.status() != WL_CONNECTED && millis() - startTime < 1000) {
+        yield(); // WiFiプロセスとWDTに時間を与える
+        delay(10); // 最小限の遅延
+      }
+
+      if (WiFi.status() == WL_CONNECTED) {
+        connected = true;
+        _networkStatus = CONNECTED;
+        _reconnectAttemptCount = 0;
+        _lastReconnectAttempt = 0;
+
+        // 詳細な接続情報をログ出力
+        DEBUG_INFO("WiFi接続成功: " + WiFi.localIP().toString());
+        DEBUG_INFO("ゲートウェイ: " + WiFi.gatewayIP().toString());
+        DEBUG_INFO("サブネット: " + WiFi.subnetMask().toString());
+        DEBUG_INFO("DNS: " + WiFi.dnsIP().toString());
+        DEBUG_INFO("信号強度: " + String(WiFi.RSSI()) + " dBm");
+        DEBUG_INFO("チャンネル: " + String(WiFi.channel()));
+      } else {
+        DEBUG_WARNING("WiFi接続試行 " + String(attempts) + " 失敗、再試行...");
+
+        // Qiitaの方法による再接続
+        WiFi.disconnect(false); // WiFi設定を保持しつつ切断
+        yield();
+        WiFi.begin(); // 保存済みの認証情報で再接続
+      }
+    }
+
+    if (!connected) {
+      _networkStatus = DISCONNECTED;
+      DEBUG_WARNING("WiFi初期接続に失敗しました。通常動作を継続します。");
+    }
   } else {
+    // WiFiManagerのポータルがタイムアウト
     _networkStatus = DISCONNECTED;
-    DEBUG_WARNING("WiFi未接続");
+    DEBUG_WARNING("WiFi設定ポータルがタイムアウトしました");
   }
-  /*
-  bool done = true;
-  Serial.print("WiFi connecting");
-  auto last = millis();
-  while (WiFi.status() != WL_CONNECTED && last + 1000 > millis()) {
-      delay(500);
-      Serial.print(".");
-  }
-  if (WiFi.status() == WL_CONNECTED) {
-      Serial.print("WIFI_CONNECTED");
-      done = false;
-  } else {
-      Serial.println("retry");
-      WiFi.disconnect();
-      WiFi.reconnect();
-  }
-  */
 
   // HTTPサーバーのセットアップ
   setupHttpHandlers();
@@ -87,26 +122,120 @@ void RealWiFiManager::begin()
 // 定期的に呼び出して接続状態を更新する
 void RealWiFiManager::update()
 {
-  // WiFi状態の更新（5秒ごと）
+  // WiFi状態の更新（間隔を200msから2000msに延長）
   unsigned long currentMillis = millis();
-  if (currentMillis - _lastStatusCheck > 200) {
+  if (currentMillis - _lastStatusCheck > 2000) {  // 2秒間隔に変更
     _lastStatusCheck = currentMillis;
 
-    Serial.println(WiFi.status());
-    if (WiFi.status() == WL_CONNECTED) {
+    // WiFiの状態チェック
+    wl_status_t wifiStatus = WiFi.status();
+
+    // 追加: WiFi状態の詳細ログ
+    String statusText;
+    switch (wifiStatus) {
+      case WL_CONNECTED: statusText = "接続済み"; break;
+      case WL_IDLE_STATUS: statusText = "アイドル"; break;
+      case WL_NO_SSID_AVAIL: statusText = "SSID未発見"; break;
+      case WL_CONNECT_FAILED: statusText = "接続失敗"; break;
+      case WL_CONNECTION_LOST: statusText = "接続喪失"; break;
+      case WL_DISCONNECTED: statusText = "未接続"; break;
+      default: statusText = "不明(" + String(wifiStatus) + ")"; break;
+    }
+
+    // 状態変化時のみ出力
+    static wl_status_t lastWifiStatus = (wl_status_t)-1;
+    if (lastWifiStatus != wifiStatus) {
+      DEBUG_INFO("WiFi状態変化: " + statusText + " (コード:" + String(wifiStatus) + ")");
+      lastWifiStatus = wifiStatus;
+    }
+
+    if (wifiStatus == WL_CONNECTED) {
+      // 接続状態
       if (_networkStatus != CONNECTED) {
         _networkStatus = CONNECTED;
         DEBUG_INFO("WiFi接続状態: 接続済み (" + WiFi.localIP().toString() + ")");
+        DEBUG_INFO("信号強度: " + String(WiFi.RSSI()) + " dBm");
+        // 両方のカウンターをリセット
+        _reconnectAttemptCount = 0;
+        _lastReconnectAttempt = 0;  // 追加: 最終再接続時間もリセット
+      }
+
+      // 定期的なRSSIモニタリング（30秒ごと）
+      static unsigned long lastRssiCheck = 0;
+      if (currentMillis - lastRssiCheck > 30000) {
+        lastRssiCheck = currentMillis;
+        int rssi = WiFi.RSSI();
+        String quality = (rssi > -50) ? "優秀" : (rssi > -60) ? "良好" : (rssi > -70) ? "普通" : "弱い";
+        DEBUG_INFO("WiFi信号強度: " + String(rssi) + " dBm (" + quality + ")");
       }
     } else {
+      // 未接続状態
       if (_networkStatus != DISCONNECTED) {
         _networkStatus = DISCONNECTED;
-        DEBUG_WARNING("WiFi接続状態: 未接続");
-
+        DEBUG_WARNING("WiFi接続状態: 未接続 (Status: " + String(wifiStatus) + ")");
       }
-      Serial.println("reconnect");
-      //WiFi.disconnect();
-      Serial.println(WiFi.reconnect());
+
+      // 再接続処理の改良（1秒間隔、10回試行後リセット）
+      bool shouldAttemptReconnect = false;
+
+      // 10回までは1秒間隔で試行
+      if (_reconnectAttemptCount < 10) {
+        // 1秒間隔で再接続を試行
+        if (currentMillis - _lastReconnectAttempt > 1000) {  // 1秒間隔
+          shouldAttemptReconnect = true;
+        }
+      } else {
+        // 10回失敗した場合はシステムをリセット
+        DEBUG_WARNING("10回の再接続試行に失敗しました。システムをリセットします");
+
+        // 最終ステータスをログに残す
+        DEBUG_WARNING("========= リセット前の状態 =========");
+        DEBUG_WARNING("稼働時間: " + String(millis() / 1000) + "秒");
+        DEBUG_WARNING("WiFi状態: " + String(WiFi.status()));
+        DEBUG_WARNING("最終SSID: " + WiFi.SSID());
+        DEBUG_WARNING("空きヒープ: " + String(ESP.getFreeHeap()) + "バイト");
+        DEBUG_WARNING("=================================");
+
+        // 少し待ってからリセット（ログが送信される時間を確保）
+        delay(500);
+        ESP.restart();  // ESP8266をソフトウェアリセット
+      }
+
+      if (shouldAttemptReconnect) {
+        _lastReconnectAttempt = currentMillis;
+        _reconnectAttemptCount++;
+
+        DEBUG_INFO("WiFi再接続を試行 (" + String(_reconnectAttemptCount) + "/10)");
+
+        // Qiitaの方法による確実な再接続
+        WiFi.disconnect(false); // WiFi設定を保持しつつ切断
+        yield(); // delay(100)をyieldに置き換え - ブロッキングを回避
+
+        if (WiFi.reconnect()) {
+          DEBUG_INFO("WiFi再接続要求が受理されました");
+
+          // 再接続の即時確認（Qiitaの方法）- 非ブロッキング
+          unsigned long reconnectStart = millis();
+          bool quickCheck = false;
+
+          // 最大500msの短い時間で接続成功するか確認
+          while (millis() - reconnectStart < 500) {
+            if (WiFi.status() == WL_CONNECTED) {
+              quickCheck = true;
+              DEBUG_INFO("WiFi再接続に成功しました（即時確認）");
+              _networkStatus = CONNECTED;
+              break;
+            }
+            yield(); // CPU時間を他の処理に譲る
+          }
+
+          if (!quickCheck) {
+            DEBUG_INFO("WiFi再接続進行中...");
+          }
+        } else {
+          DEBUG_WARNING("WiFi再接続要求が失敗しました");
+        }
+      }
     }
   }
 
@@ -187,24 +316,58 @@ void RealWiFiManager::resetSettings()
 // 接続待ち
 bool RealWiFiManager::waitForConnection(unsigned long timeout)
 {
+  DEBUG_INFO("WiFi接続待機開始（タイムアウト: " + String(timeout) + "ms）");
+
   unsigned long startTime = millis();
+  bool connected = false;
+  int attempts = 0;
+  const int MAX_ATTEMPTS = 10; // 最大試行回数
 
-  while (millis() - startTime < timeout) {
-    if (WiFi.status() == WL_CONNECTED) {
-      _networkStatus = CONNECTED;
-      DEBUG_INFO("WiFi接続完了: " + WiFi.localIP().toString());
-      return true;
+  // 接続を試みる
+  while (!connected && millis() - startTime < timeout && attempts < MAX_ATTEMPTS) {
+    attempts++;
+    DEBUG_INFO("接続確認 " + String(attempts) + "/" + String(MAX_ATTEMPTS));
+
+    // 1秒間の短いタイムアウトで接続を確認
+    unsigned long checkStart = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - checkStart < 1000) {
+      yield(); // WiFiプロセスとWDTに時間を与える
+      delay(10); // 最小限の遅延
     }
-    delay(100);
+
+    if (WiFi.status() == WL_CONNECTED) {
+      connected = true;
+      _networkStatus = CONNECTED;
+      _reconnectAttemptCount = 0;
+      _lastReconnectAttempt = 0;
+
+      // 詳細な接続情報をログ出力
+      DEBUG_INFO("WiFi接続完了: " + WiFi.localIP().toString());
+      DEBUG_INFO("信号強度: " + String(WiFi.RSSI()) + " dBm");
+
+      return true;
+    } else {
+      DEBUG_WARNING("WiFi接続試行 " + String(attempts) + " 失敗、再試行...");
+
+      // Qiitaの方法で即座に再接続
+      WiFi.disconnect(false); // WiFi設定を保持しつつ切断
+      yield();
+      WiFi.begin(); // 保存済みの認証情報で再接続
+    }
   }
 
-  if (WiFi.status() != WL_CONNECTED) {
-    DEBUG_WARNING("WiFi接続タイムアウト");
+  // タイムアウトまたは最大試行回数に達した
+  if (!connected) {
     _networkStatus = CONNECTION_ERROR;
-    return false;
+
+    if (millis() - startTime >= timeout) {
+      DEBUG_WARNING("WiFi接続がタイムアウトしました（" + String(timeout) + "ms）");
+    } else {
+      DEBUG_WARNING("WiFi接続が最大試行回数（" + String(MAX_ATTEMPTS) + "回）に達しました");
+    }
   }
 
-  return true;
+  return connected;
 }
 
 // HTTPハンドラーのセットアップ
@@ -297,6 +460,7 @@ String RealWiFiManager::createDiscoveryResponse()
   serializeJson(jsonDoc, response);
   return response;
 }
+
 
 //==========================================================================
 // MockWiFiManager 実装
