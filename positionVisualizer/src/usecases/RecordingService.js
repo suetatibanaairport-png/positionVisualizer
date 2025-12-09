@@ -3,7 +3,7 @@
  * ログ生成を管理するUseCase
  * Domain Layerのみに依存し、外部実装には依存しない
  */
-(function() {
+(function () {
   'use strict';
 
   const SessionLog = window.SessionLog || (typeof module !== 'undefined' && module.exports ? require('../domain/SessionLog') : null);
@@ -14,12 +14,13 @@
     this.logFileStorage = logFileStorage;
     this.currentSession = null;
     this.subscribers = [];
+    this.recordingStartTimeMs = null; // Track session start for relative timestamps
   }
 
   /**
    * 記録を開始
    */
-  RecordingService.prototype.startRecording = function() {
+  RecordingService.prototype.startRecording = function () {
     if (this.currentSession && !this.currentSession.isEnded()) {
       return; // Already recording
     }
@@ -27,33 +28,34 @@
     const sessionLog = new SessionLog();
     this.currentSession = sessionLog;
     this.sessionLogRepository.save(sessionLog);
-    
+    this.recordingStartTimeMs = sessionLog.startedAt instanceof Date ? sessionLog.startedAt.getTime() : Date.now();
+
     this._notifySubscribers({ type: 'started', session: sessionLog });
   };
 
   /**
    * 記録を停止
    */
-  RecordingService.prototype.stopRecording = function() {
+  RecordingService.prototype.stopRecording = function () {
     if (!this.currentSession || this.currentSession.isEnded()) {
       return null;
     }
 
     this.currentSession.end();
     const entries = this.currentSession.entries.slice();
-    
+
     this._notifySubscribers({ type: 'stopped', session: this.currentSession });
-    
+
     const session = this.currentSession;
     this.currentSession = null;
-    
+
     return entries;
   };
 
   /**
    * デバイスデータを記録
    */
-  RecordingService.prototype.recordDeviceData = function(deviceId, normalizedValue) {
+  RecordingService.prototype.recordDeviceData = function (deviceId, normalizedValue) {
     if (!this.currentSession || this.currentSession.isEnded()) {
       return;
     }
@@ -84,19 +86,11 @@
       return;
     }
 
-    // Create log entry
-    const values = [null, null, null, null, null, null];
-    // Extract index from deviceId (lever1 -> 0, lever2 -> 1, etc.)
-    const indexMatch = String(deviceId).match(/(\d+)$/);
-    if (indexMatch) {
-      const index = parseInt(indexMatch[1], 10) - 1;
-      if (index >= 0 && index < 6) {
-        values[index] = Math.max(0, Math.min(100, numValue));
-      }
-    }
+    // Unpack array if necessary (though it should be a single value now)
+    const finalValue = Array.isArray(numValue) ? numValue[0] : numValue;
 
-    const logEntry = new LogEntry(Date.now(), JSON.stringify(values));
-    
+    const logEntry = new LogEntry(Date.now(), id, finalValue);
+
     this.currentSession.addEntry(logEntry);
     this._notifySubscribers({ type: 'recorded', entry: logEntry });
   };
@@ -104,26 +98,34 @@
   /**
    * 記録されたデータを保存
    */
-  RecordingService.prototype.saveRecordedData = function(entries) {
+  RecordingService.prototype.saveRecordedData = function (entries) {
     if (!entries || entries.length === 0) {
       throw new Error('記録されたデータがありません');
     }
 
-    // Convert LogEntry objects to serializable format
+    // Determine base timestamp (relative start). Prefer recorded start time; fallback to first entry timestamp.
+    let baseTs = Number.isFinite(this.recordingStartTimeMs) ? this.recordingStartTimeMs : null;
+    if (!Number.isFinite(baseTs)) {
+      const firstEntryTs = entries[0] && entries[0].timestamp instanceof Date
+        ? entries[0].timestamp.getTime()
+        : Number(entries[0] && entries[0].timestamp);
+      baseTs = Number.isFinite(firstEntryTs) ? firstEntryTs : Date.now();
+    }
+
+    // Convert LogEntry objects to serializable format { id, value, ts }
     const serializableData = entries.map(entry => {
-      const values = entry.getNormalizedValues();
-      // Find non-null value and its index
-      for (let i = 0; i < values.length; i++) {
-        if (values[i] !== null && values[i] !== undefined) {
-          return {
-            id: i + 1, // device index + 1
-            value: values[i],
-            ts: entry.timestamp instanceof Date ? entry.timestamp.getTime() : entry.timestamp
-          };
-        }
-      }
-      return null;
+      const entryTs = entry.timestamp instanceof Date ? entry.timestamp.getTime() : Number(entry.timestamp);
+      const ts = Number.isFinite(entryTs) ? Math.max(0, Math.round(entryTs - baseTs)) : 0;
+
+      return {
+        id: entry.id,
+        value: entry.value,
+        ts: ts
+      };
     }).filter(item => item !== null);
+
+    // Clear stored start time after exporting to avoid reuse across sessions
+    this.recordingStartTimeMs = null;
 
     // Save via storage
     return this.logFileStorage.save(serializableData);
@@ -132,7 +134,7 @@
   /**
    * 記録ステータスを取得
    */
-  RecordingService.prototype.getRecordingStatus = function() {
+  RecordingService.prototype.getRecordingStatus = function () {
     if (!this.currentSession || this.currentSession.isEnded()) {
       return {
         isRecording: false,
@@ -151,7 +153,7 @@
   /**
    * 変更を購読
    */
-  RecordingService.prototype.subscribe = function(callback) {
+  RecordingService.prototype.subscribe = function (callback) {
     if (typeof callback === 'function') {
       this.subscribers.push(callback);
     }
@@ -160,7 +162,7 @@
   /**
    * 購読を解除
    */
-  RecordingService.prototype.unsubscribe = function(callback) {
+  RecordingService.prototype.unsubscribe = function (callback) {
     const index = this.subscribers.indexOf(callback);
     if (index >= 0) {
       this.subscribers.splice(index, 1);
@@ -170,7 +172,7 @@
   /**
    * 購読者に通知
    */
-  RecordingService.prototype._notifySubscribers = function(event) {
+  RecordingService.prototype._notifySubscribers = function (event) {
     this.subscribers.forEach(callback => {
       try {
         callback(event);

@@ -2,7 +2,7 @@
  * MainPageBindings - Presentation Layer
  * メインページのDOMバインディング
  */
-(function() {
+(function () {
   'use strict';
 
   const MeterRenderer = window.MeterRenderer;
@@ -17,20 +17,20 @@
     this.iconService = iconService;
     this.webSocketClient = webSocketClient;
     this.overlayChannel = overlayChannel;
-    
+
     this.deviceIdMap = new Map();
   }
 
   /**
    * デバイスIDをインデックスにマッピング
    */
-  MainPageBindings.prototype._getDeviceIndex = function(deviceId) {
+  MainPageBindings.prototype._getDeviceIndex = function (deviceId) {
     if (!deviceId) return -1;
-    
+
     if (this.deviceIdMap.has(deviceId)) {
       return this.deviceIdMap.get(deviceId);
     }
-    
+
     const match = deviceId.match(/(\d+)$/);
     if (match) {
       const num = parseInt(match[1], 10);
@@ -40,7 +40,7 @@
         return index;
       }
     }
-    
+
     // Try to find by IP address or name
     for (let i = 0; i < 6; i++) {
       const ipEl = document.getElementById(`device${i + 1}-ip`);
@@ -52,18 +52,18 @@
         return i;
       }
     }
-    
+
     return -1;
   };
 
   /**
    * WebSocketメッセージを処理
    */
-  MainPageBindings.prototype._handleWebSocketMessage = function(event) {
+  MainPageBindings.prototype._handleWebSocketMessage = function (event) {
     if (event.type !== 'message') return;
-    
+
     const data = event.data;
-    
+
     // Handle state messages
     if (data.type === 'state' && data.payload) {
       const payload = data.payload;
@@ -71,10 +71,10 @@
         for (let i = 0; i < 6; i++) {
           const value = payload.values[i];
           const prevValue = this.viewModel.state.values[i];
-          
+
           if (value !== null && value !== undefined) {
             this.viewModel.setValue(i, value, true, true);
-            
+
             // Record data if recording is active
             if (this.recordingService && prevValue !== value) {
               const deviceId = `lever${i + 1}`;
@@ -87,7 +87,7 @@
       }
       return;
     }
-    
+
     // Handle device data JSON (legacy format)
     if (data.device_id && data.data) {
       this._processDeviceData(data);
@@ -101,19 +101,19 @@
   /**
    * デバイスデータを処理
    */
-  MainPageBindings.prototype._processDeviceData = function(jsonData) {
+  MainPageBindings.prototype._processDeviceData = function (jsonData) {
     try {
       if (!jsonData || typeof jsonData !== 'object') return;
-      
+
       const deviceId = jsonData.device_id;
       if (!deviceId) return;
-      
+
       const index = this._getDeviceIndex(deviceId);
       if (index < 0 || index > 5) return;
-      
+
       const data = jsonData.data;
       if (!data) return;
-      
+
       let value = null;
       if (typeof data.value === 'number') {
         value = data.value;
@@ -122,10 +122,10 @@
       } else if (typeof data.raw === 'number') {
         value = data.raw;
       }
-      
+
       if (value !== null && !isNaN(value)) {
         this.viewModel.setValue(index, value);
-        
+
         // Record data if recording is active
         if (this.recordingService) {
           const normalizedValue = this.viewModel.state.values[index];
@@ -140,22 +140,22 @@
   /**
    * 状態をブロードキャスト
    */
-  MainPageBindings.prototype.broadcast = function() {
+  MainPageBindings.prototype.broadcast = function () {
     const state = this.viewModel.toJSON();
     const svgEl = document.querySelector('#meter-container svg[data-meter]');
     const svgMarkup = svgEl ? svgEl.outerHTML : '';
-    
+
     // BroadcastChannel
     if (this.overlayChannel) {
       this.overlayChannel.postMessage({ ...state, svg: svgMarkup });
     }
-    
+
     // localStorage
     try {
       localStorage.setItem('meter-state', JSON.stringify({ ...state, ts: Date.now() }));
       if (svgMarkup) localStorage.setItem('meter-svg', svgMarkup);
-    } catch (e) {}
-    
+    } catch (e) { }
+
     // WebSocket
     if (this.webSocketClient) {
       this.webSocketClient.send({ type: 'state', payload: { ...state, svg: svgMarkup } });
@@ -165,13 +165,13 @@
   /**
    * バインディングをアタッチ
    */
-  MainPageBindings.prototype.attach = function() {
+  MainPageBindings.prototype.attach = function () {
     const vm = this.viewModel;
     const self = this;
-    
+
     // Initialize meter renderer
     MeterRenderer.initMeter(document.getElementById('meter-container'));
-    
+
     // Connect WebSocket
     if (this.webSocketClient) {
       this.webSocketClient.subscribe((event) => {
@@ -179,12 +179,12 @@
       });
       this.webSocketClient.connect();
     }
-    
+
     // Subscribe to ViewModel changes
     vm.onChange((state) => {
       const connectedDeviceIndices = vm.getConnectedDeviceIndices();
       const actualValues = vm.getActualValues();
-      
+
       MeterRenderer.updateMeter(state.values, {
         names: state.names,
         icon: state.icon,
@@ -197,10 +197,10 @@
         maxValue: vm.maxValue,
         icons: state.icons
       });
-      
+
       self.broadcast();
     });
-    
+
     // Initial paint
     const initialConnectedDeviceIndices = vm.getConnectedDeviceIndices();
     const initialActualValues = vm.getActualValues();
@@ -217,18 +217,18 @@
       icons: vm.state.icons
     });
     this.broadcast();
-    
+
     // Bind UI controls
     this._bindUIControls();
   };
-  
+
   /**
    * UIコントロールをバインディング
    */
-  MainPageBindings.prototype._bindUIControls = function() {
+  MainPageBindings.prototype._bindUIControls = function () {
     const vm = this.viewModel;
     const self = this;
-    
+
     // Bind device name inputs
     for (let i = 1; i <= 6; i++) {
       const el = document.getElementById(`device${i}-name`);
@@ -238,34 +238,34 @@
         el.addEventListener('change', handler);
       }
     }
-    
+
     // Bind range settings
     const minValueInput = document.getElementById('min-value');
     const maxValueInput = document.getElementById('max-value');
     const unitInput = document.getElementById('value-unit');
-    
+
     if (minValueInput) {
       minValueInput.addEventListener('change', () => vm.setMinValue(minValueInput.value));
       minValueInput.addEventListener('input', () => vm.setMinValue(minValueInput.value));
     }
-    
+
     if (maxValueInput) {
       maxValueInput.addEventListener('change', () => vm.setMaxValue(maxValueInput.value));
       maxValueInput.addEventListener('input', () => vm.setMaxValue(maxValueInput.value));
     }
-    
+
     if (unitInput) {
       unitInput.addEventListener('change', () => vm.setUnit(unitInput.value));
       unitInput.addEventListener('input', () => vm.setUnit(unitInput.value));
     }
-    
+
     // Bind icon uploads
     for (let i = 1; i <= 6; i++) {
       const input = document.getElementById(`device${i}-icon`);
       if (input) {
         const button = input.closest('.icon-file-button');
         const buttonText = button ? button.querySelector('.icon-button-text') : null;
-        
+
         const updateIconState = () => {
           const hasIcon = vm.state.icons && vm.state.icons[i - 1];
           if (button) {
@@ -278,9 +278,9 @@
             }
           }
         };
-        
+
         updateIconState();
-        
+
         input.addEventListener('change', () => {
           const file = input.files && input.files[0];
           if (!file) {
@@ -299,18 +299,18 @@
           };
           reader.readAsDataURL(file);
         });
-        
+
         vm.onChange(() => {
           updateIconState();
         });
       }
     }
-    
+
     // Bind recording controls
     const startRecordBtn = document.getElementById('start-record');
     const stopRecordBtn = document.getElementById('stop-record');
     const recordStatusEl = document.getElementById('log-record-status');
-    
+
     const updateRecordStatus = () => {
       if (!recordStatusEl || !this.recordingService) return;
       const status = this.recordingService.getRecordingStatus();
@@ -322,52 +322,44 @@
         recordStatusEl.style.color = '#666';
       }
     };
-    
+
     if (startRecordBtn && this.recordingService) {
       startRecordBtn.addEventListener('click', () => {
         this.recordingService.startRecording();
         updateRecordStatus();
       });
     }
-    
+
     if (stopRecordBtn && this.recordingService) {
       stopRecordBtn.addEventListener('click', () => {
         const entries = this.recordingService.stopRecording();
         if (entries && entries.length > 0) {
           try {
-            const blob = new Blob([JSON.stringify(entries.map(e => ({
-              ts: e.timestamp instanceof Date ? e.timestamp.getTime() : e.timestamp,
-              values: e.getNormalizedValues()
-            })))], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `lever-log-${Date.now()}.json`;
-            a.click();
-            URL.revokeObjectURL(url);
+            // Use RecordingService to save data (it handles formatting and download)
+            this.recordingService.saveRecordedData(entries);
           } catch (e) {
             console.error('Failed to save log:', e);
-            alert('ログの保存に失敗しました');
+            alert('ログの保存に失敗しました: ' + e.message);
           }
         }
         updateRecordStatus();
       });
     }
-    
+
     // Subscribe to recording status changes
     if (this.recordingService) {
       this.recordingService.subscribe(() => {
         updateRecordStatus();
       });
     }
-    
+
     updateRecordStatus();
-    
+
     // Bind replay controls
     const logFile = document.getElementById('log-file');
     const playBtn = document.getElementById('play-log');
     const stopBtn = document.getElementById('stop-log');
-    
+
     if (playBtn && logFile && this.replayService) {
       playBtn.addEventListener('click', () => {
         const f = logFile.files && logFile.files[0];
@@ -382,7 +374,7 @@
         });
       });
     }
-    
+
     if (stopBtn && this.replayService) {
       stopBtn.addEventListener('click', () => {
         this.replayService.stop();
