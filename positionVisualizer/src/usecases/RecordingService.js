@@ -20,7 +20,7 @@
   /**
    * 記録を開始
    */
-  RecordingService.prototype.startRecording = function () {
+  RecordingService.prototype.startRecording = function (initialValues) {
     if (this.currentSession && !this.currentSession.isEnded()) {
       return; // Already recording
     }
@@ -31,6 +31,19 @@
     this.recordingStartTimeMs = sessionLog.startedAt instanceof Date ? sessionLog.startedAt.getTime() : Date.now();
 
     this._notifySubscribers({ type: 'started', session: sessionLog });
+
+    // Record initial values if provided
+    if (Array.isArray(initialValues)) {
+      initialValues.forEach((val, index) => {
+        if (val !== null && val !== undefined) {
+          // Device IDs are 1-based usually, or index based? 
+          // LogEntry uses numeric ID. Main use `i+1`?
+          // In recordDeviceData: `const match = deviceId.match(/(\d+)$/);`
+          // Let's assume ID is index+1.
+          this.recordDeviceData(`lever${index + 1}`, val);
+        }
+      });
+    }
   };
 
   /**

@@ -13,6 +13,7 @@
     this.httpPollingClient = httpPollingClient;
     this.overlayChannel = overlayChannel;
     this.initialized = false;
+    this.isMainPageReplaying = false;
   }
 
   /**
@@ -148,6 +149,9 @@
    * 状態を処理
    */
   OverlayBindings.prototype._handleState = function (payload) {
+    if (payload && payload.isReplaying !== undefined) {
+      this.isMainPageReplaying = !!payload.isReplaying;
+    }
     if (payload && typeof payload.svg === 'string' && payload.svg) {
       if (!this.initialized) {
         this._renderSvgFull(payload.svg);
@@ -257,6 +261,8 @@
     // WebSocket receiver
     if (this.webSocketClient) {
       this.webSocketClient.subscribe((event) => {
+        if (self.isMainPageReplaying) return; // Ignore live data during replay
+
         if (event.type === 'message') {
           const msg = event.data || {};
           if (msg && msg.type === 'state' && msg.payload) {
@@ -270,6 +276,8 @@
     // HTTP polling fallback
     if (this.httpPollingClient) {
       this.httpPollingClient.subscribe((event) => {
+        if (self.isMainPageReplaying) return; // Ignore live data during replay
+
         if (event.type === 'data') {
           self._handleState(event.data);
         }

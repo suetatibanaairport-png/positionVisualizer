@@ -142,23 +142,42 @@
    */
   MainPageBindings.prototype.broadcast = function () {
     const state = this.viewModel.toJSON();
-    const svgEl = document.querySelector('#meter-container svg[data-meter]');
-    const svgMarkup = svgEl ? svgEl.outerHTML : '';
+    const isPlaying = this.replayService && this.replayService.isPlaying;
+
+    // SVG string - expensive to serialize!
+    // Skip serialization during playback to improve performance
+    let svgMarkup = '';
+    if (!isPlaying) {
+      const svgEl = document.querySelector('#meter-container svg[data-meter]');
+      svgMarkup = svgEl ? svgEl.outerHTML : '';
+    }
 
     // BroadcastChannel
     if (this.overlayChannel) {
-      this.overlayChannel.postMessage({ ...state, svg: svgMarkup });
+      // During playback, we send only data (no SVG) to keep 60fps
+      // Add isReplaying flag so Overlay knows to ignore Live Data
+      this.overlayChannel.postMessage({ ...state, svg: svgMarkup, isReplaying: !!isPlaying });
     }
 
     // localStorage
-    try {
-      localStorage.setItem('meter-state', JSON.stringify({ ...state, ts: Date.now() }));
-      if (svgMarkup) localStorage.setItem('meter-svg', svgMarkup);
-    } catch (e) { }
+    // Skip high-frequency writes during playback
+    if (!isPlaying) {
+      try {
+        localStorage.setItem('meter-state', JSON.stringify({ ...state, ts: Date.now(), isReplaying: false }));
+        if (svgMarkup) localStorage.setItem('meter-svg', svgMarkup);
+      } catch (e) { }
+    } else {
+      // Optionally update state sparingly or just rely on Channel? 
+      // If we don't update localStorage, Overlay won't see it if it only looks there? 
+      // Overlay looks at Channel too.
+      // But if we want to support "Ghost Replay" prevention, we might want to write isReplaying: true once?
+      // Let's safe-guard by writing ONE minimal state if it changed? No, 60fps write is bad.
+      // Overlay listens to Channel so it's fine.
+    }
 
     // WebSocket
     if (this.webSocketClient) {
-      this.webSocketClient.send({ type: 'state', payload: { ...state, svg: svgMarkup } });
+      this.webSocketClient.send({ type: 'state', payload: { ...state, svg: svgMarkup, isReplaying: !!isPlaying } });
     }
   };
 
@@ -325,7 +344,8 @@
 
     if (startRecordBtn && this.recordingService) {
       startRecordBtn.addEventListener('click', () => {
-        this.recordingService.startRecording();
+        // Pass current values to capture initial state
+        this.recordingService.startRecording(this.viewModel.state.values);
         updateRecordStatus();
       });
     }
