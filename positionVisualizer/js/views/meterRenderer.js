@@ -13,7 +13,7 @@
   const LANE_OFFSETS = [-40, -20, 0, 20, 40, 60]; // Fallback for max 6 devices
   const MAX_LANE_OFFSET = 30; // Maximum offset from base radius (within meter bounds)
   const MIN_LANE_OFFSET = -30; // Minimum offset from base radius (within meter bounds)
-  
+
   // Calculate lane offsets dynamically based on device count
   function calculateLaneOffsets(deviceCount) {
     if (deviceCount <= 0) return [];
@@ -50,12 +50,12 @@
       minY = Math.min(minY, y_outer, y_inner);
       maxY = Math.max(maxY, y_outer, y_inner);
     });
-    
+
     // Consider icon positions (icons are 50x50, with offsets up to 60)
     const maxIconOffset = Math.max(...LANE_OFFSETS.map(Math.abs));
     const iconRadius = 25; // Half of icon size (50/2)
     const maxRadius = baseRadius + maxIconOffset + iconRadius;
-    
+
     // Check icon positions at start and end angles
     const startRad = toRadians(startAngle);
     const endRad = toRadians(endAngle);
@@ -63,7 +63,7 @@
       { x: baseCx + maxRadius * Math.cos(startRad), y: baseCy + maxRadius * Math.sin(startRad) },
       { x: baseCx + maxRadius * Math.cos(endRad), y: baseCy + maxRadius * Math.sin(endRad) }
     ];
-    
+
     // Also check middle positions for icons
     for (let i = 0; i <= 10; i++) {
       const t = i / 10;
@@ -77,14 +77,14 @@
       minY = Math.min(minY, y - iconRadius);
       maxY = Math.max(maxY, y + iconRadius);
     }
-    
+
     // Add extra padding to ensure icons are never clipped
     const padding = 30; // Increased padding for overlay
-    return { 
-      width: maxX - minX + padding * 2, 
-      height: maxY - minY + padding * 2, 
-      offsetX: -minX + padding, 
-      offsetY: -minY + padding 
+    return {
+      width: maxX - minX + padding * 2,
+      height: maxY - minY + padding * 2,
+      offsetX: -minX + padding,
+      offsetY: -minY + padding
     };
   }
 
@@ -114,7 +114,7 @@
     const t = clamped / 100;
     const angle = startAngle + (endAngle - startAngle) * t;
     const angleRad = toRadians(angle);
-    
+
     // Use dynamic lane offsets if deviceCount is provided, otherwise fallback to fixed offsets
     let laneOffsets;
     if (deviceCount && deviceCount > 0) {
@@ -122,7 +122,7 @@
     } else {
       laneOffsets = LANE_OFFSETS;
     }
-    
+
     // Clamp laneIndex to valid range
     const safeLaneIndex = Math.max(0, Math.min(laneOffsets.length - 1, laneIndex));
     const offset = laneOffsets[safeLaneIndex] || 0;
@@ -134,13 +134,13 @@
 
   function updateTickLabels(svg, minValue, maxValue, unit) {
     if (!svg) return;
-    
+
     // Remove existing label group
     const existingGroup = svg.querySelector('g.tick-labels-group');
     if (existingGroup) {
       existingGroup.remove();
     }
-  
+
   }
 
   function ensureSvg(containerEl) {
@@ -224,7 +224,7 @@
     const unit = (options && options.unit) || '%'; // Unit for display
     const minValue = (options && typeof options.minValue === 'number') ? options.minValue : 0;
     const maxValue = (options && typeof options.maxValue === 'number') ? options.maxValue : 100;
-    
+
     // Calculate device count from connected device indices
     let deviceCount = 0;
     if (connectedDeviceIndices !== null && Array.isArray(connectedDeviceIndices)) {
@@ -243,17 +243,17 @@
       }
       return;
     }
-    
+
     // Helper function to convert normalized value (0-100%) to actual value based on min/max settings
     function denormalizeValue(percentage) {
       const range = maxValue - minValue;
       if (range === 0) return minValue; // Avoid division by zero
       return minValue + (percentage / 100) * range;
     }
-    
+
     const containerEl = document.getElementById('meter-container');
     const svg = ensureSvg(containerEl);
-    
+
     const existing = new Map();
     svg.querySelectorAll('g[data-perf]').forEach(g => {
       existing.set(g.getAttribute('data-perf'), g);
@@ -268,7 +268,7 @@
         existing.delete(String(index));
         return;
       }
-      
+
       // Skip if this index should be hidden (when connectedDeviceIndices is specified)
       if (connectedDeviceIndices !== null && !connectedDeviceIndices.includes(index)) {
         // Remove icon if it exists
@@ -287,7 +287,7 @@
         // If no connected device indices specified, use index directly (but limit to deviceCount)
         laneIndex = index % deviceCount;
       }
-      
+
       const numericVal = Number(val);
       const safeVal = Number.isFinite(numericVal) ? numericVal : 0;
       const pos = calculateIconPosition(safeVal, laneIndex, deviceCount);
@@ -305,6 +305,9 @@
         if (bgHref) {
           bgImage.setAttributeNS('http://www.w3.org/1999/xlink', 'href', bgHref);
           bgImage.setAttribute('href', bgHref);
+          bgImage.style.display = 'block';
+        } else {
+          bgImage.style.display = 'none';
         }
         bgImage.setAttribute('x', String(-25));
         bgImage.setAttribute('y', String(-25));
@@ -326,8 +329,8 @@
         }
 
         // Machine-readable attributes for UI parsing
-        const displayValue = actualValues && actualValues[index] !== undefined 
-          ? actualValues[index] 
+        const displayValue = actualValues && actualValues[index] !== undefined
+          ? actualValues[index]
           : denormalizeValue(safeVal);
         const roundedDisplay = Math.round(displayValue);
         g.setAttribute('data-percentage', String(Math.max(0, Math.min(100, safeVal))));
@@ -344,14 +347,14 @@
         g.setAttribute('transform', `translate(${pos.x}, ${pos.y})`);
         svg.appendChild(g);
       } else {
-        // Remove any existing text element
+        // Remove any existing text element(legacy)
         const t = g.querySelector('text');
         if (t) {
           t.remove();
         }
         // Update machine-readable attributes
-        const displayValue = actualValues && actualValues[index] !== undefined 
-          ? actualValues[index] 
+        const displayValue = actualValues && actualValues[index] !== undefined
+          ? actualValues[index]
           : denormalizeValue(safeVal);
         const roundedDisplay = Math.round(displayValue);
         const clampedPercent = Math.max(0, Math.min(100, safeVal));
@@ -363,7 +366,7 @@
         // imgs[0] -> bg, imgs[1] -> fg (if exists)
         const bg = imgs[0];
         const fg = imgs.length >= 2 ? imgs[1] : null;
-        
+
         if (bg) {
           const desiredBg = (icons && icons[index]) ? icons[index] : '';
           if (desiredBg) {
@@ -371,15 +374,17 @@
               bg.setAttributeNS('http://www.w3.org/1999/xlink', 'href', desiredBg);
               bg.setAttribute('href', desiredBg);
             }
+            bg.style.display = 'block';
           } else {
-            // If no bg icon, clear href to hide (keeps element for layout consistency)
+            // If no bg icon, clear href AND hide
             if (bg.getAttribute('href')) {
               bg.removeAttribute('href');
               bg.removeAttributeNS('http://www.w3.org/1999/xlink', 'href');
             }
+            bg.style.display = 'none';
           }
         }
-        
+
         // Handle foreground icon
         if (icon) {
           // Icon should be shown
@@ -416,7 +421,7 @@
 
     // Remove any extra stale groups
     existing.forEach((g) => g.remove());
-    
+
     // Update tick labels with min/max values (after all other updates)
     updateTickLabels(svg, minValue, maxValue, unit);
   }

@@ -2,7 +2,7 @@
  * OverlayBindings - Presentation Layer
  * オーバーレイウィンドウのDOMバインディング
  */
-(function() {
+(function () {
   'use strict';
 
   const MeterRenderer = window.MeterRenderer;
@@ -18,14 +18,14 @@
   /**
    * SVGを完全にレンダリング
    */
-  OverlayBindings.prototype._renderSvgFull = function(svgMarkup) {
+  OverlayBindings.prototype._renderSvgFull = function (svgMarkup) {
     if (!svgMarkup) return;
     const container = document.getElementById('meter-container');
     if (!container) return;
-    
+
     container.innerHTML = svgMarkup;
     this.initialized = true;
-    
+
     if (window.IconRenderer && window.IconRenderer.updateAllIconValues) {
       setTimeout(() => {
         window.IconRenderer.updateAllIconValues();
@@ -36,28 +36,28 @@
   /**
    * SVGをパッチ（差分更新）
    */
-  OverlayBindings.prototype._patchSvg = function(svgMarkup) {
+  OverlayBindings.prototype._patchSvg = function (svgMarkup) {
     if (!svgMarkup) return;
     const container = document.getElementById('meter-container');
     if (!container) return;
-    
+
     const existingSvg = container.querySelector('svg[data-meter]');
     if (!existingSvg) {
       this._renderSvgFull(svgMarkup);
       return;
     }
-    
+
     const temp = document.createElement('div');
     temp.innerHTML = svgMarkup;
     const nextSvg = temp.querySelector('svg[data-meter]');
     if (!nextSvg) return;
-    
+
     // Update viewBox if changed
     const nextViewBox = nextSvg.getAttribute('viewBox');
     if (nextViewBox && existingSvg.getAttribute('viewBox') !== nextViewBox) {
       existingSvg.setAttribute('viewBox', nextViewBox);
     }
-    
+
     // Update perf groups
     const nextGroups = nextSvg.querySelectorAll('g[data-perf]');
     nextGroups.forEach((ng) => {
@@ -68,11 +68,11 @@
         existingSvg.appendChild(g);
         return;
       }
-      
+
       // Update transform
       const tr = ng.getAttribute('transform');
       if (tr) g.setAttribute('transform', tr);
-      
+
       // Update data attributes
       const dataPercentage = ng.getAttribute('data-percentage');
       const dataActual = ng.getAttribute('data-actual');
@@ -80,7 +80,7 @@
       if (dataPercentage !== null) g.setAttribute('data-percentage', dataPercentage);
       if (dataActual !== null) g.setAttribute('data-actual', dataActual);
       if (dataUnit !== null) g.setAttribute('data-unit', dataUnit);
-      
+
       // Update text
       const nt = ng.querySelector('text');
       const ct = g.querySelector('text');
@@ -88,7 +88,7 @@
         if (ct.textContent !== nt.textContent) ct.textContent = nt.textContent;
         ct.setAttribute('y', nt.getAttribute('y') || ct.getAttribute('y') || '15');
       }
-      
+
       // Update icon-value text
       const nIconText = ng.querySelector('text.icon-value');
       const cIconText = g.querySelector('text.icon-value');
@@ -101,7 +101,7 @@
           cIconText.setAttribute('data-unit', nIconText.getAttribute('data-unit') || '');
         }
       }
-      
+
       // Update images
       const nimgs = ng.querySelectorAll('image');
       const cimgs = g.querySelectorAll('image');
@@ -113,15 +113,30 @@
         }
         const updatedCImgs = g.querySelectorAll('image');
         for (let i = 0; i < nimgs.length; i++) {
-          const href = nimgs[i].getAttribute('href') || nimgs[i].getAttributeNS('http://www.w3.org/1999/xlink', 'href');
-          if (updatedCImgs[i]) {
-            updatedCImgs[i].setAttributeNS('http://www.w3.org/1999/xlink', 'href', href);
-            updatedCImgs[i].setAttribute('href', href);
+          const nimg = nimgs[i];
+          const cimg = updatedCImgs[i];
+          if (cimg) {
+            const href = nimg.getAttribute('href') || nimg.getAttributeNS('http://www.w3.org/1999/xlink', 'href');
+            if (href) {
+              cimg.setAttributeNS('http://www.w3.org/1999/xlink', 'href', href);
+              cimg.setAttribute('href', href);
+            } else {
+              cimg.removeAttributeNS('http://www.w3.org/1999/xlink', 'href');
+              cimg.removeAttribute('href');
+            }
+
+            // Copy style (display: none, etc)
+            const style = nimg.getAttribute('style');
+            if (style) {
+              cimg.setAttribute('style', style);
+            } else {
+              cimg.removeAttribute('style');
+            }
           }
         }
       }
     });
-    
+
     if (window.IconRenderer && window.IconRenderer.updateAllIconValues) {
       setTimeout(() => {
         window.IconRenderer.updateAllIconValues();
@@ -132,7 +147,7 @@
   /**
    * 状態を処理
    */
-  OverlayBindings.prototype._handleState = function(payload) {
+  OverlayBindings.prototype._handleState = function (payload) {
     if (payload && typeof payload.svg === 'string' && payload.svg) {
       if (!this.initialized) {
         this._renderSvgFull(payload.svg);
@@ -141,7 +156,7 @@
       }
       return;
     }
-    
+
     if (payload && Array.isArray(payload.values)) {
       const values = payload.values;
       for (let i = 0; i < 6; i++) {
@@ -152,7 +167,7 @@
           this.viewModel.setValue(i, null, false);
         }
       }
-      
+
       if (payload.icon !== undefined) {
         this.viewModel.setIcon(payload.icon);
       }
@@ -165,7 +180,7 @@
       if (payload.maxValue !== undefined) {
         this.viewModel.setMaxValue(payload.maxValue);
       }
-      
+
       this.initialized = true;
     }
   };
@@ -173,23 +188,23 @@
   /**
    * バインディングをアタッチ
    */
-  OverlayBindings.prototype.attach = function() {
+  OverlayBindings.prototype.attach = function () {
     const container = document.getElementById('meter-container');
     const self = this;
-    
+
     // Initialize meter
     try {
       MeterRenderer.initMeter(container);
       MeterRenderer.updateMeter([], { icon: null });
       this.initialized = !!container.querySelector('svg[data-meter]');
-      
+
       if (window.IconRenderer && window.IconRenderer.updateAllIconValues) {
         setTimeout(() => {
           window.IconRenderer.updateAllIconValues();
         }, 100);
       }
-    } catch (e) {}
-    
+    } catch (e) { }
+
     // BroadcastChannel receiver
     if (this.overlayChannel) {
       this.overlayChannel.subscribe((event) => {
@@ -214,12 +229,12 @@
                   self._patchSvg(svg);
                 }
               }
-            } catch (e) {}
+            } catch (e) { }
           }
         }
       });
     }
-    
+
     // localStorage storage event
     window.addEventListener('storage', (e) => {
       if (e.key === 'meter-svg' && typeof e.newValue === 'string') {
@@ -230,15 +245,15 @@
         }
       }
     });
-    
+
     // Initial load from localStorage
     try {
       const svg = localStorage.getItem('meter-svg');
       if (svg) {
         this._renderSvgFull(svg);
       }
-    } catch (e) {}
-    
+    } catch (e) { }
+
     // WebSocket receiver
     if (this.webSocketClient) {
       this.webSocketClient.subscribe((event) => {
@@ -251,7 +266,7 @@
       });
       this.webSocketClient.connect();
     }
-    
+
     // HTTP polling fallback
     if (this.httpPollingClient) {
       this.httpPollingClient.subscribe((event) => {
@@ -261,12 +276,12 @@
       });
       this.httpPollingClient.start();
     }
-    
+
     // Subscribe to ViewModel changes
     this.viewModel.onChange((state) => {
       const connectedDeviceIndices = this.viewModel.getConnectedDeviceIndices();
       const actualValues = this.viewModel.getActualValues();
-      
+
       MeterRenderer.updateMeter(state.values, {
         names: state.names,
         icon: state.icon,
@@ -279,7 +294,7 @@
         maxValue: this.viewModel.maxValue,
         icons: state.icons
       });
-      
+
       if (window.IconRenderer && window.IconRenderer.updateAllIconValues) {
         setTimeout(() => {
           window.IconRenderer.updateAllIconValues();
