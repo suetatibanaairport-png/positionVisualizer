@@ -95,6 +95,11 @@ void LeverController::begin()
   });
 
   // ネットワーク開始
+  _calibButton->update();
+  if (_calibButton->isPressed()) {
+    DEBUG_INFO("WiFi設定を削除");
+    _network->resetSettings();  //ボタンが押されていたら内蔵フラッシュメモリーのWiFi設定を削除
+  }
   _network->begin();
   _network->enableDiscovery(true);
 
@@ -118,13 +123,13 @@ void LeverController::update()
 
   // センサー値の読み取りと平滑化
   int rawValue = _potReader->readRawValue();
-
+  
   // 単純な指数平滑化
   _smoothedValue = ((_smoothedValue * (SMOOTHING_FACTOR - 1)) + rawValue) / SMOOTHING_FACTOR;
 
   // キャリブレーションと正規化
   _calibratedValue = _calibration.mapTo0_100(_smoothedValue);
-
+  
   // キャリブレーション中の処理
   if (_isCalibrating) {
     // キャリブレーション中はmin/maxを更新

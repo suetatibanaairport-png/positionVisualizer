@@ -21,10 +21,11 @@ public:
 
   void begin() {
     // アナログピンの初期化（必要に応じて）
-    pinMode(_pin, INPUT);
+    //pinMode(_pin, INPUT);
 
     // 初期値を読み取り
     _lastValue = analogRead(_pin);
+    _lastCheckTime = micros();
 
     // サンプリングバッファの初期化
     for (int i = 0; i < BUFFER_SIZE; i++) {
@@ -37,7 +38,13 @@ public:
 
   // 生の値を読み取る（0-1023の範囲）
   int readRawValue() override {
-    _lastValue = analogRead(_pin);
+    //10ms(10000us)周期でanalogRead実行　
+    //3.3ms以下だとWiFiのビーコンに取りこぼしが生じWIFiが切断される
+    //analogReadによりCPU占有率が高くなることが原因と推定される
+    if ( micros()-_lastCheckTime >= 10000 ) {
+      _lastValue = analogRead(_pin);
+      _lastCheckTime = micros();
+    }
     return _lastValue;
   }
 
@@ -72,7 +79,7 @@ private:
   uint8_t _pin;                     // アナログ入力ピン
   uint8_t _smoothingFactor;         // 平滑化係数
   int _lastValue;                   // 最後に読み取った値
-
+  unsigned long _lastCheckTime;     // 最後に読み取った時間 [us]
   // 平滑化用変数
   int _samples[BUFFER_SIZE];        // サンプル値バッファ
   int _sampleIndex;                 // 現在のサンプルインデックス
@@ -167,7 +174,7 @@ public:
 
   void update() override {
     bool rawState = readRawState();
-
+    DEBUG_INFO(rawState);
     // デバウンス処理
     if (rawState != _lastRawState) {
       _lastDebounceTime = millis();
