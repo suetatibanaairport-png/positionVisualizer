@@ -163,6 +163,12 @@
 
     if (payload && Array.isArray(payload.values)) {
       const values = payload.values;
+
+      // Update icons if present in payload (fixes missing images during replay)
+      if (payload.icons && Array.isArray(payload.icons)) {
+        this.viewModel.state.icons = payload.icons.slice(0, 6);
+      }
+
       for (let i = 0; i < 6; i++) {
         const value = values[i];
         if (value !== null && value !== undefined) {
