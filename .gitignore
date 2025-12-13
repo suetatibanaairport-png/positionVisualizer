@@ -28,3 +28,4 @@ build/
 # Architecture Documentation
 ARCHITECTURE.md
 
+__pycache__/

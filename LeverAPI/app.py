@@ -11,6 +11,7 @@ BFF（Backend For Frontend）として動作し、フロントエンド向けに
 """
 
 import os
+import sys
 import json
 import time
 import socket
@@ -903,4 +904,6 @@ if __name__ == '__main__':
     initialize_app()
 
     # WebSocketサーバーとして起動
-    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
+    # PyInstallerでコンパイルされた場合はデバッグモードを無効化
+    is_frozen = getattr(sys, 'frozen', False)
+    socketio.run(app, host='0.0.0.0', port=5001, debug=(not is_frozen))
