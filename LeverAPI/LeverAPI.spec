@@ -1,8 +1,9 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_submodules
 
-hiddenimports = ['engineio.async_drivers.eventlet', 'eventlet.hubs.epolls', 'eventlet.hubs.kqueue', 'eventlet.hubs.selects', 'api.discovery', 'api.device_manager', 'api.transformers', 'api.cache']
+hiddenimports = ['engineio.async_drivers.eventlet', 'api.discovery', 'api.device_manager', 'api.transformers', 'api.cache']
 hiddenimports += collect_submodules('dns')
+hiddenimports += collect_submodules('eventlet')
 
 
 a = Analysis(

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ターミナルのタイトルを設定（対応しているターミナルの場合）
-echo -e "\033]0;LeverScope - ポジション可視化ツール\007"
+echo -e "\033]0;LeverVisualizer - ポジション可視化ツール\007"
 
 # 現在のディレクトリを取得
 APP_DIR=$(dirname "$0")
@@ -12,7 +12,7 @@ echo -e "\033[32m"
 
 # ヘッダー表示
 echo "=========================================="
-echo "      LeverScope - ポジション可視化ツール"
+echo "      LeverVisualizer - ポジション可視化ツール"
 echo "=========================================="
 echo ""
 echo "アプリケーションを起動しています..."
@@ -26,10 +26,10 @@ mkdir -p ./logs
 
 # 日時を含むログファイル名を作成
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-LOG_FILE="./logs/leverscope-${TIMESTAMP}.log"
+LOG_FILE="./logs/leverVisualizer-${TIMESTAMP}.log"
 
 # プロセスID変数
-LEVERSCOPE_PID=""
+LEVERVisualizer_PID=""
 
 # 関数: クリーンアップ処理
 cleanup() {
@@ -37,11 +37,11 @@ cleanup() {
   echo "アプリケーションを終了しています..."
   echo "すべてのプロセスをクリーンアップしています..."
 
-  # LeverScopeプロセスの終了
-  if [ -n "$LEVERSCOPE_PID" ]; then
-    kill -9 $LEVERSCOPE_PID 2>/dev/null
+  # LeverVisualizerプロセスの終了
+  if [ -n "$LEVERVisualizer_PID" ]; then
+    kill -9 $LEVERVisualizer_PID 2>/dev/null
   else
-    pkill -f "LeverScope" 2>/dev/null
+    pkill -f "LeverVisualizer" 2>/dev/null
   fi
 
   # HTTPサーバーとWebSocketサーバーのプロセスを強制終了（念のため）
@@ -61,15 +61,15 @@ trap cleanup SIGINT SIGTERM
 PARAMS=""
 
 # アプリケーションを実行
-./LeverScope $PARAMS > "$LOG_FILE" 2>&1 &
-LEVERSCOPE_PID=$!
+./LeverVisualizer $PARAMS > "$LOG_FILE" 2>&1 &
+LEVERVisualizer_PID=$!
 
 # プロセスが実行中かチェック
-if ps -p $LEVERSCOPE_PID > /dev/null; then
-  echo "LeverScope が起動しました (PID: $LEVERSCOPE_PID)"
+if ps -p $LEVERVisualizer_PID > /dev/null; then
+  echo "LeverVisualizer が起動しました (PID: $LEVERVisualizer_PID)"
   echo "ログ: $LOG_FILE"
 else
-  echo "[エラー] LeverScope の起動に失敗しました"
+  echo "[エラー] LeverVisualizer の起動に失敗しました"
   exit 1
 fi
 

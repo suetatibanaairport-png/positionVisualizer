@@ -28,13 +28,13 @@ set "PARAMS="
 for /f "tokens=2" %%a in ('tasklist /fi "windowtitle eq LeverScope - ポジション可視化ツール" /fo list ^| find "PID:"') do set BATCH_PID=%%a
 
 :: アプリケーションをバックグラウンドで実行
-start "LeverScope" /b "%APP_DIR%LeverScope.exe" %PARAMS%
+start "LeverVisualizer" /b "%APP_DIR%LeverVisualizer.exe" %PARAMS%
 
 :: 少し待機して、プロセスIDを取得して表示
 timeout /t 1 > nul
-for /f "tokens=2" %%p in ('tasklist /fi "imagename eq LeverScope.exe" /fo list ^| find "PID:"') do (
+for /f "tokens=2" %%p in ('tasklist /fi "imagename eq LeverVisualizer.exe" /fo list ^| find "PID:"') do (
     set APP_PID=%%p
-    echo LeverScope が起動しました (PID: %%p)
+    echo LeverVisualizer が起動しました (PID: %%p)
     echo ログはlogs/ディレクトリに保存されます。
 )
 
@@ -66,19 +66,19 @@ echo.
 echo アプリケーションを終了しています...
 echo すべてのプロセスをクリーンアップしています...
 
-:: LeverScopeプロセスを終了
+:: LeverVisualizerプロセスを終了
 if defined APP_PID (
     echo プロセスID %APP_PID% を終了中...
     taskkill /F /PID %APP_PID% > nul 2>&1
 ) else (
-    echo LeverScopeプロセスを検索して終了中...
-    taskkill /F /FI "IMAGENAME eq LeverScope.exe" > nul 2>&1
+    echo LeverVisualizerプロセスを検索して終了中...
+    taskkill /F /FI "IMAGENAME eq LeverVisualizer.exe" > nul 2>&1
 )
 
 :: 念のため、関連するプロセスも終了
-taskkill /F /FI "WINDOWTITLE eq LeverScope HTTP Server" > nul 2>&1
-taskkill /F /FI "WINDOWTITLE eq LeverScope Bridge Server" > nul 2>&1
-taskkill /F /FI "IMAGENAME eq node.exe" /FI "WINDOWTITLE eq LeverScope*" > nul 2>&1
+taskkill /F /FI "WINDOWTITLE eq LeverVisualizer HTTP Server" > nul 2>&1
+taskkill /F /FI "WINDOWTITLE eq LeverVisualizer Bridge Server" > nul 2>&1
+taskkill /F /FI "IMAGENAME eq node.exe" /FI "WINDOWTITLE eq LeverVisualizer*" > nul 2>&1
 
 echo.
 echo 終了しました。何かキーを押すと閉じます...

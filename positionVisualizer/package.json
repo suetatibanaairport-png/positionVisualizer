@@ -8,8 +8,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node integrated-server.js",
     "build": "npm run build:win && npm run build:mac",
-    "build:win": "bun build ./integrated-server.js --compile --target=bun-windows-x64 --outfile ../app/Windows/LeverScope.exe",
-    "build:mac": "bun build ./integrated-server.js --compile --target=bun-darwin-arm64 --outfile ../app/macOS/LeverScope"
+    "build:win": "bun build ./integrated-server.js --compile --target=bun-windows-x64 --outfile ../app/Windows/LeverVisualizer.exe",
+    "build:mac": "bun build ./integrated-server.js --compile --target=bun-darwin-arm64 --outfile ../app/macOS/LeverVisualizer"
   },
   "repository": {
     "type": "git",

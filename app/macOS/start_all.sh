@@ -67,10 +67,10 @@ cleanup() {
       echo "       フロントエンドを終了しました"
     else
       echo "       [警告] フロントエンドの終了に失敗しました"
-      pkill -f "LeverScope" 2>/dev/null
+      pkill -f "LeverVisualizer" 2>/dev/null
     fi
   else
-    pkill -f "LeverScope" 2>/dev/null
+    pkill -f "LeverVisualizer" 2>/dev/null
   fi
 
   # HTTPサーバーとWebSocketサーバーのプロセスを強制終了（念のため）
@@ -122,8 +122,8 @@ sleep 3
 
 # フロントエンドを起動
 echo "[2/2] フロントエンドを起動しています..."
-if [ -f "./LeverScope" ]; then
-  ./LeverScope > "$FE_LOG" 2>&1 &
+if [ -f "./LeverVisualizer" ]; then
+  ./LeverVisualizer > "$FE_LOG" 2>&1 &
   FE_PID=$!
 
   # プロセスが起動したか確認
@@ -133,8 +133,8 @@ if [ -f "./LeverScope" ]; then
     echo "       [警告] フロントエンドのPID取得に失敗しました"
   fi
 else
-  echo "       [エラー] LeverScopeが見つかりません"
-  echo "                $APP_DIR/LeverScope"
+  echo "       [エラー] LeverVisualizerが見つかりません"
+  echo "                $APP_DIR/LeverVisualizer"
   error_exit
 fi
 

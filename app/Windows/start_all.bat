@@ -64,11 +64,11 @@ timeout /t 3 /nobreak > nul
 
 :: フロントエンドを起動
 echo [2/2] フロントエンドを起動しています...
-if exist "%APP_DIR%LeverScope.exe" (
-    start /b "LeverScope" "%APP_DIR%LeverScope.exe" > "%FE_LOG%" 2>&1
+if exist "%APP_DIR%LeverVisualizer.exe" (
+    start /b "LeverVisualizer" "%APP_DIR%LeverVisualizer.exe" > "%FE_LOG%" 2>&1
 
     :: PIDを取得
-    for /f "tokens=2" %%a in ('tasklist /fi "imagename eq LeverScope.exe" /fo list ^| find "PID:"') do set "FE_PID=%%a"
+    for /f "tokens=2" %%a in ('tasklist /fi "imagename eq LeverVisualizer.exe" /fo list ^| find "PID:"') do set "FE_PID=%%a"
 
     if defined FE_PID (
         echo       フロントエンドが起動しました (PID: !FE_PID!)
@@ -76,8 +76,8 @@ if exist "%APP_DIR%LeverScope.exe" (
         echo       [警告] フロントエンドのPID取得に失敗しました
     )
 ) else (
-    echo       [エラー] LeverScope.exeが見つかりません
-    echo               %APP_DIR%LeverScope.exe
+    echo       [エラー] LeverVisualizer.exeが見つかりません
+    echo               %APP_DIR%LeverVisualizer.exe
     goto :ERROR
 )
 
@@ -125,16 +125,16 @@ if defined FE_PID (
         echo       フロントエンドを終了しました
     ) else (
         echo       [警告] フロントエンドの終了に失敗しました
-        taskkill /F /IM LeverScope.exe 2>nul
+        taskkill /F /IM LeverVisualizer.exe 2>nul
     )
 ) else (
-    taskkill /F /IM LeverScope.exe 2>nul
+    taskkill /F /IM LeverVisualizer.exe 2>nul
 )
 
 :: HTTPサーバーとWebSocketサーバーのプロセスを強制終了（念のため）
-taskkill /F /FI "WINDOWTITLE eq LeverScope HTTP Server" > nul 2>&1
-taskkill /F /FI "WINDOWTITLE eq LeverScope Bridge Server" > nul 2>&1
-taskkill /F /FI "IMAGENAME eq node.exe" /FI "WINDOWTITLE eq LeverScope*" > nul 2>&1
+taskkill /F /FI "WINDOWTITLE eq LeverVisualizer HTTP Server" > nul 2>&1
+taskkill /F /FI "WINDOWTITLE eq LeverVisualizer Bridge Server" > nul 2>&1
+taskkill /F /FI "IMAGENAME eq node.exe" /FI "WINDOWTITLE eq LeverVisualizer*" > nul 2>&1
 
 echo.
 echo =======================================================

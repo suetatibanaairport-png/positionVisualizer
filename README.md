@@ -123,10 +123,10 @@ cd ./LeverAPI
 pip install -r requirements.txt
 
 # コンパイル実行（実行環境と同じOS向けの実行ファイルが生成されます）
-pyinstaller --onefile --collect-submodules=dns --hidden-import=engineio.async_drivers.eventlet \
-  --hidden-import=eventlet.hubs.epolls --hidden-import=eventlet.hubs.kqueue \
-  --hidden-import=eventlet.hubs.selects --hidden-import=api.discovery \
-  --hidden-import=api.device_manager --hidden-import=api.transformers --hidden-import=api.cache \
+pyinstaller --onefile --collect-submodules=dns --collect-submodules=eventlet \
+  --hidden-import=engineio.async_drivers.eventlet \
+  --hidden-import=api.discovery --hidden-import=api.device_manager \
+  --hidden-import=api.transformers --hidden-import=api.cache \
   --name LeverAPI app.py
 ```
 
