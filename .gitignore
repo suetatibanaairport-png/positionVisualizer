@@ -22,7 +22,7 @@ Thumbs.db
 *.swo
 
 # Build
-dist/
+# dist/
 build/
 
 # Architecture Documentation
