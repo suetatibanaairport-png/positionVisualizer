@@ -29,3 +29,4 @@ build/
 ARCHITECTURE.md
 
 __pycache__/
+node_modules/

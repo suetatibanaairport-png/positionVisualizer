@@ -368,7 +368,7 @@ function updateChart(values) {
 // WebSocketの初期化と接続
 function initWebSocket() {
     // Socket.IOクライアントの作成
-    appState.socket = io(`http://${window.location.hostname}:5000`);
+    appState.socket = io(`http://${window.location.hostname}:5001`);
 
     // 接続イベント
     appState.socket.on('connect', () => {

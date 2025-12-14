@@ -107,6 +107,70 @@ leverSystem/
    - 展開して `python-portable` フォルダに配置
    - pipをセットアップ（詳細は各セットアップスクリプトを参照）
 
+## 実行ファイルのコンパイルについて
+
+コードを更新した後に実行ファイルを再コンパイルする手順を説明します。初回のスタンドアロン化セットアップについては、`claudedocs/positionVisualizer_スタンドアロン化手順.md` を参照してください。
+
+### Python (LeverAPI) の再コンパイル
+
+LeverAPIのコードを更新した場合、PyInstallerを使用して再コンパイルします。
+
+**重要**: PyInstallerは実行している環境（OS）向けの実行ファイルしか生成できません。クロスプラットフォームビルド（MacからWindows用バイナリを作成するなど）には対応していません。Windows用の実行ファイル（.exe）を生成するには、Windows環境でコマンドを実行する必要があります。
+
+```bash
+# 依存パッケージが追加された場合はインストール
+cd ./LeverAPI
+pip install -r requirements.txt
+
+# コンパイル実行（実行環境と同じOS向けの実行ファイルが生成されます）
+pyinstaller --onefile --collect-submodules=dns --hidden-import=engineio.async_drivers.eventlet \
+  --hidden-import=eventlet.hubs.epolls --hidden-import=eventlet.hubs.kqueue \
+  --hidden-import=eventlet.hubs.selects --hidden-import=api.discovery \
+  --hidden-import=api.device_manager --hidden-import=api.transformers --hidden-import=api.cache \
+  --name LeverAPI app.py
+```
+
+Windows環境でコンパイルした場合、実行ファイルは `./LeverAPI/dist/LeverAPI.exe` に作成されます。
+macOSでコンパイルした場合は `.exe` 拡張子なしの実行ファイルが作成されます。
+更新する場合は `./app/[OS name]` の実行ファイルと置換してください。
+
+### フロントエンドの再コンパイル
+
+フロントエンドのコードを更新した場合、以下の手順で再コンパイルします。
+
+**注意**: Node.jsの`pkg`ツールはクロスプラットフォームビルドをサポートしているため、macOSからでもWindows用の実行ファイルを生成できます。
+
+```bash
+# 依存パッケージが追加された場合はインストール
+npm install
+
+# Windows用実行ファイルの生成（macOSからでも実行可能）
+npm run build:win
+
+# macOS向けにビルドする場合
+npm run build:mac
+
+# Linux向けにビルドする場合
+npm run build:linux
+```
+
+コンパイル後の実行ファイルは `./app/[OS name]/LeverScope.exe`（Windows向け）に作成されます。
+プロジェクトで使用している実行ファイルを新しくコンパイルしたものと置き換えてください。
+
+### 注意事項
+
+1. **依存関係の変更**: 新しいライブラリやモジュールを追加した場合、コンパイル前に必ず依存パッケージをインストールしてください。
+
+2. **隠れた依存関係**: PyInstallerで新しいモジュールを使用する場合、`--hidden-import` オプションの追加が必要になることがあります。
+
+3. **クロスプラットフォームビルド**:
+   - Python (LeverAPI): 実行している環境と同じOS向けの実行ファイルしか生成できません。Windows用の.exeファイルが必要な場合は、Windows環境でコンパイルする必要があります。
+   - Node.js (フロントエンド): pkg ツールはクロスプラットフォームビルドをサポートしているため、macOSからでもWindows用の実行ファイルを生成できます。
+
+4. **ファイルパス**: コンパイル後の実行ファイルは、それぞれ適切なディレクトリに移動・配置してください。
+
+5. **配布**: 最終的な実行ファイル一式をまとめる場合は、配布用パッケージの作成手順を参照してください（`claudedocs/positionVisualizer_スタンドアロン化手順.md` の「配布パッケージの作成」セクション）。
+
 ## 使用方法
 
 ### メインウィンドウ

@@ -1,0 +1,5 @@
+[build]
+entrypoints = ["./integrated-server.js"]
+target = "bun"
+format = "executable"
+outdir = "../app/bin"

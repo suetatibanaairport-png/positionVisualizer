@@ -9,7 +9,7 @@
   let latest = { values: [null, null, null, null, null, null], names: [], icon: 'assets/icon.svg', svg: '', ts: Date.now() };
   
   // LeverAPI integration
-  const LEVER_API_URL = process.env.LEVER_API_URL || 'http://127.0.0.1:5000';
+  const LEVER_API_URL = process.env.LEVER_API_URL || 'http://127.0.0.1:5001';
   
   // Map device_id to index (lever1 -> 0, lever2 -> 1, etc.)
   function getDeviceIndex(deviceId) {
@@ -135,13 +135,20 @@
     }
   }
 
-  // Ensure logs directory exists
   // Get positionVisualizer directory (go up one level from tools)
   const toolsDir = __dirname;
   const positionVisualizerDir = path.resolve(toolsDir, '..');
+
+  // Ensure logs directory exists
   const logsDir = path.join(positionVisualizerDir, 'logs');
   if (!fs.existsSync(logsDir)) {
     fs.mkdirSync(logsDir, { recursive: true });
+  }
+
+  // Ensure json directory exists
+  const jsonDir = path.join(positionVisualizerDir, 'json');
+  if (!fs.existsSync(jsonDir)) {
+    fs.mkdirSync(jsonDir, { recursive: true });
   }
 
   const server = http.createServer((req, res) => {
@@ -171,7 +178,7 @@
           }
           
           const filename = data.filename || `meter-log-${Date.now()}.json`;
-          const filepath = path.join(logsDir, filename);
+          const filepath = path.join(jsonDir, filename);
           const jsonContent = JSON.stringify(data.records, null, 2);
           
           fs.writeFile(filepath, jsonContent, 'utf8', (err) => {
