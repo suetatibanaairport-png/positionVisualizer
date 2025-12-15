@@ -13,22 +13,58 @@ title LeverApp 統合管理コンソール
 set "APP_DIR=%~dp0"
 cd /d "%APP_DIR%"
 
-:: ログディレクトリを作成
-if not exist ".\logs" mkdir ".\logs"
+:: ログディレクトリの作成は行わない
 
-:: タイムスタンプを取得（ログファイル名用）
+:: タイムスタンプを取得
 for /f "tokens=2 delims==" %%a in ('wmic OS Get localdatetime /value') do set "dt=%%a"
 set "TIMESTAMP=%dt:~0,8%_%dt:~8,6%"
-set "API_LOG=.\logs\leverapi-%TIMESTAMP%.log"
-set "HTTP_LOG=.\logs\leverhttp-%TIMESTAMP%.log"
-set "BRIDGE_LOG=.\logs\leverbridge-%TIMESTAMP%.log"
+:: プロセス出力はコンソールに表示（ファイル保存しない）
+set "API_LOG=nul"
+set "HTTP_LOG=nul"
+set "BRIDGE_LOG=nul"
 
 :: プロセスIDを保存する変数
 set "API_PID="
 set "HTTP_PID="
 set "BRIDGE_PID="
 
-:: 終了時の処理
+:: 各バイナリが存在するか確認
+if not exist ".\LeverAPI.exe" (
+    echo エラー: LeverAPIが見つかりません
+    pause
+    exit /b 1
+)
+
+if not exist ".\LeverHTTP.exe" (
+    echo エラー: LeverHTTPが見つかりません
+    pause
+    exit /b 1
+)
+
+if not exist ".\LeverBridge.exe" (
+    echo エラー: LeverBridgeが見つかりません
+    pause
+    exit /b 1
+)
+
+:: ターミナル表示
+cls
+echo =======================================
+echo         LeverApp 起動スクリプト
+echo =======================================
+echo.
+echo 以下のコンポーネントを起動します:
+echo 1. LeverAPI (バックエンド API サーバー)
+echo 2. LeverHTTP (HTTP サーバー)
+echo 3. LeverBridge (WebSocket ブリッジ)
+echo.
+echo ログはコンソールに表示されます
+echo 終了するには Ctrl+C を押してください
+echo.
+
+:: 終了時の処理（関数の代わりにラベルを使用）
+goto :start_services
+
 :cleanup
 echo.
 echo === アプリケーションを終了しています ===
@@ -73,64 +109,27 @@ taskkill /F /IM LeverBridge.exe >nul 2>&1
 echo.
 echo すべてのプロセスを終了しました
 echo.
-goto :eof
+pause
+exit /b 0
 
-:: Ctrl+Cで強制終了された場合
-:ctrlc_handler
-goto cleanup
-
-:: 各バイナリが存在するか確認
-if not exist ".\LeverAPI.exe" (
-    echo エラー: LeverAPIが見つかりません
-    pause
-    exit /b 1
-)
-
-if not exist ".\LeverHTTP.exe" (
-    echo エラー: LeverHTTPが見つかりません
-    pause
-    exit /b 1
-)
-
-if not exist ".\LeverBridge.exe" (
-    echo エラー: LeverBridgeが見つかりません
-    pause
-    exit /b 1
-)
-
-:: ターミナル表示
-cls
-echo =======================================
-echo         LeverApp 起動スクリプト
-echo =======================================
-echo.
-echo 以下のコンポーネントを起動します:
-echo 1. LeverAPI (バックエンド API サーバー)
-echo 2. LeverHTTP (HTTP サーバー)
-echo 3. LeverBridge (WebSocket ブリッジ)
-echo.
-echo ログは logs\ ディレクトリに保存されます
-echo 終了するには Ctrl+C を押してください
-echo.
-
-:: プロセス終了時のハンドラを設定
-:: Windowsでは完全な代替がないため、定期的にチェックするループで対応
-
+:start_services
 :: 1. LeverAPI を起動
 echo [1/3] LeverAPIを起動しています...
 start /b "" ".\LeverAPI.exe" > "%API_LOG%" 2>&1
 
-:: PIDの取得を試みる
+:: PIDの取得を試みる - より堅牢な方法
 timeout /t 2 /nobreak > nul
-for /f "tokens=2" %%a in ('tasklist /fi "IMAGENAME eq LeverAPI.exe" /fo list ^| find "PID:"') do (
+for /f "tokens=2" %%a in ('wmic process where "name='LeverAPI.exe'" get ProcessId ^| findstr /r "[0-9]"') do (
     set "API_PID=%%a"
+    goto :api_pid_found
 )
+:api_pid_found
 
 :: PIDが有効か確認
 if defined API_PID (
-    echo ✓ LeverAPIが起動しました (PID: %API_PID%)
+    echo [成功] LeverAPIが起動しました (PID: %API_PID%)
 ) else (
-    echo × LeverAPIの起動に失敗しました
+    echo [失敗] LeverAPIの起動に失敗しました
     goto cleanup
 )
 
@@ -141,17 +140,19 @@ timeout /t 2 /nobreak > nul
 echo [2/3] LeverHTTPを起動しています...
 start /b "" ".\LeverHTTP.exe" > "%HTTP_LOG%" 2>&1
 
-:: PIDの取得を試みる
+:: PIDの取得を試みる - より堅牢な方法
 timeout /t 2 /nobreak > nul
-for /f "tokens=2" %%a in ('tasklist /fi "IMAGENAME eq LeverHTTP.exe" /fo list ^| find "PID:"') do (
+for /f "tokens=2" %%a in ('wmic process where "name='LeverHTTP.exe'" get ProcessId ^| findstr /r "[0-9]"') do (
     set "HTTP_PID=%%a"
+    goto :http_pid_found
 )
+:http_pid_found
 
 :: PIDが有効か確認
 if defined HTTP_PID (
-    echo ✓ LeverHTTPが起動しました (PID: %HTTP_PID%)
+    echo [成功] LeverHTTPが起動しました (PID: %HTTP_PID%)
 ) else (
-    echo × LeverHTTPの起動に失敗しました
+    echo [失敗] LeverHTTPの起動に失敗しました
     goto cleanup
 )
 
@@ -162,17 +163,19 @@ timeout /t 1 /nobreak > nul
 echo [3/3] LeverBridgeを起動しています...
 start /b "" ".\LeverBridge.exe" > "%BRIDGE_LOG%" 2>&1
 
-:: PIDの取得を試みる
+:: PIDの取得を試みる - より堅牢な方法
 timeout /t 2 /nobreak > nul
-for /f "tokens=2" %%a in ('tasklist /fi "IMAGENAME eq LeverBridge.exe" /fo list ^| find "PID:"') do (
+for /f "tokens=2" %%a in ('wmic process where "name='LeverBridge.exe'" get ProcessId ^| findstr /r "[0-9]"') do (
     set "BRIDGE_PID=%%a"
+    goto :bridge_pid_found
 )
+:bridge_pid_found
 
 :: PIDが有効か確認
 if defined BRIDGE_PID (
-    echo ✓ LeverBridgeが起動しました (PID: %BRIDGE_PID%)
+    echo [成功] LeverBridgeが起動しました (PID: %BRIDGE_PID%)
 ) else (
-    echo × LeverBridgeの起動に失敗しました
+    echo [失敗] LeverBridgeの起動に失敗しました
     goto cleanup
 )
 
@@ -200,23 +203,23 @@ start "" "http://localhost:8000"
 :: すべてのプロセスが実行中か確認
 tasklist /FI "PID eq %API_PID%" 2>nul | find "%API_PID%" >nul
 if %ERRORLEVEL% NEQ 0 (
-    echo ⚠️ LeverAPIが終了しました。アプリケーションを終了します。
+    echo [警告] LeverAPIが終了しました。アプリケーションを終了します。
     goto cleanup
 )
 
 tasklist /FI "PID eq %HTTP_PID%" 2>nul | find "%HTTP_PID%" >nul
 if %ERRORLEVEL% NEQ 0 (
-    echo ⚠️ LeverHTTPが終了しました。アプリケーションを終了します。
+    echo [警告] LeverHTTPが終了しました。アプリケーションを終了します。
     goto cleanup
 )
 
 tasklist /FI "PID eq %BRIDGE_PID%" 2>nul | find "%BRIDGE_PID%" >nul
 if %ERRORLEVEL% NEQ 0 (
-    echo ⚠️ LeverBridgeが終了しました。アプリケーションを終了します。
+    echo [警告] LeverBridgeが終了しました。アプリケーションを終了します。
     goto cleanup
 )
 
-:: Ctrl+C のチェック - Windows では難しいため定期的な sleep で代用
-echo サービス実行中... Ctrl+C で終了
-timeout /t 5 /nobreak > nul
+:: 定期的なチェック
+echo サービス実行中... [Ctrl+C で終了]
+timeout /t 5 > nul
 goto check_loop

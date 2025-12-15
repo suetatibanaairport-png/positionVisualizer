@@ -11,14 +11,14 @@ export LC_ALL="en_US.UTF-8"
 APP_DIR=$(dirname "$0")
 cd "$APP_DIR"
 
-# ログディレクトリを作成
-mkdir -p ./logs
+# ログディレクトリの作成は行わない
 
-# タイムスタンプを取得（ログファイル名用）
+# タイムスタンプを取得
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-API_LOG="./logs/leverapi-${TIMESTAMP}.log"
-HTTP_LOG="./logs/leverhttp-${TIMESTAMP}.log"
-BRIDGE_LOG="./logs/leverbridge-${TIMESTAMP}.log"
+# プロセス出力はコンソールに表示（ファイル保存しない）
+API_LOG="/dev/null"
+HTTP_LOG="/dev/null"
+BRIDGE_LOG="/dev/null"
 
 # プロセスIDを保存する変数
 API_PID=""
@@ -66,7 +66,7 @@ echo "1. LeverAPI (バックエンド API サーバー)"
 echo "2. LeverHTTP (HTTP サーバー)"
 echo "3. LeverBridge (WebSocket ブリッジ)"
 echo ""
-echo "ログは logs/ ディレクトリに保存されます"
+echo "ログはコンソールに表示されます"
 echo "終了するには Ctrl+C を押してください"
 echo ""
 
