@@ -24,26 +24,13 @@ const HOST = process.env.HTTP_HOST || '127.0.0.1';
 // コンパイル後のバイナリでは、ファイルは同じディレクトリにある
 const baseDir = __dirname;
 
-// 環境情報のログ出力
-console.log('==== HTTP Server Environment ====');
-console.log('OS Platform:', process.platform);
-console.log('Node Version:', process.version);
-console.log('Working Directory:', process.cwd());
-console.log('Script Directory:', __dirname);
-console.log('Base Directory:', baseDir);
-console.log('================================');
-
 // バンドルリソース情報
 if (resources) {
   console.log(`バンドルリソース利用可能: ${resources.listResources().length}ファイル`);
 } else {
-  // ファイルシステムのアクセス確認
   try {
     fs.accessSync(baseDir, fs.constants.R_OK);
-    console.log(`ベースディレクトリにアクセス可能: ${baseDir}`);
-    // ディレクトリの内容をログ出力
     const files = fs.readdirSync(baseDir);
-    console.log(`ベースディレクトリ内のファイル数: ${files.length}`);
     if (files.includes('index.html')) {
       console.log('index.html が見つかりました');
     } else {
@@ -90,7 +77,7 @@ function serveFromBundle(pathname, res) {
       return;
     }
 
-    console.log(`バンドルから配信: ${pathname}, MIME: ${mimeType}, サイズ: ${resource.length} バイト`);
+    // console.log(`バンドルから配信: ${pathname}, MIME: ${mimeType}, サイズ: ${resource.length} バイト`);
     res.writeHead(200, {
       'Content-Type': mimeType,
       'Cache-Control': 'no-store, no-cache, must-revalidate',
@@ -108,7 +95,7 @@ function serveFromBundle(pathname, res) {
 // ファイルシステムから配信
 function serveFile(filePath, res) {
   const mimeType = getMimeType(filePath);
-  console.log(`ファイルから配信: ${filePath}, MIME: ${mimeType}`);
+  // console.log(`ファイルから配信: ${filePath}, MIME: ${mimeType}`);
 
   fs.readFile(filePath, (err, data) => {
     if (err) {
@@ -118,7 +105,7 @@ function serveFile(filePath, res) {
       return;
     }
 
-    console.log(`ファイル読み込み成功: ${filePath}, サイズ: ${data.length} バイト`);
+    // console.log(`ファイル読み込み成功: ${filePath}, サイズ: ${data.length} バイト`);
     res.writeHead(200, {
       'Content-Type': mimeType,
       'Cache-Control': 'no-store, no-cache, must-revalidate',
@@ -151,7 +138,7 @@ const server = http.createServer((req, res) => {
     pathname = '/index.html';
   }
 
-  console.log(`リクエスト: ${pathname}`);
+  // console.log(`リクエスト: ${pathname}`);
 
   // バンドルリソースがある場合、そこから配信
   if (resources) {

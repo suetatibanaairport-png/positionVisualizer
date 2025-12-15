@@ -6,14 +6,6 @@
   const path = require('path');
   const io = require('socket.io-client');
 
-  // 環境情報のログ出力
-  console.log('==== Bridge Server Environment ====');
-  console.log('OS Platform:', process.platform);
-  console.log('Node Version:', process.version);
-  console.log('Working Directory:', process.cwd());
-  console.log('Script Directory:', __dirname);
-  console.log('==================================');
-
   let latest = { values: [null, null, null, null, null, null], names: [], icon: 'assets/icon.svg', svg: '', ts: Date.now() };
 
   // LeverAPI integration
@@ -150,20 +142,15 @@
 
   // ディレクトリ確認をより強固に
   function ensureDirectoryExists(dir, name) {
-    console.log(`${name}ディレクトリを確認中: ${dir}`);
     try {
       if (!fs.existsSync(dir)) {
-        console.log(`${name}ディレクトリが存在しないため作成します`);
         fs.mkdirSync(dir, { recursive: true });
         console.log(`${name}ディレクトリを作成しました`);
-      } else {
-        console.log(`${name}ディレクトリは既に存在します`);
       }
 
       // 書き込み権限の確認
       try {
         fs.accessSync(dir, fs.constants.W_OK);
-        console.log(`${name}ディレクトリに書き込み権限があります`);
       } catch (accessErr) {
         console.warn(`${name}ディレクトリへの書き込み権限がありません:`, accessErr.message);
         throw accessErr;

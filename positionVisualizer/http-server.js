@@ -12,24 +12,12 @@ const HOST = process.env.HTTP_HOST || '127.0.0.1';
 // コンパイル後のバイナリでは、ファイルは同じディレクトリにある必要がある
 const toolsDir = __dirname;
 const baseDir = __dirname;
-console.log('Base directory for static files:', baseDir);
-
-// 環境情報のログ出力
-console.log('==== HTTP Server Environment ====');
-console.log('OS Platform:', process.platform);
-console.log('Node Version:', process.version);
-console.log('Working Directory:', process.cwd());
-console.log('Script Directory:', toolsDir);
-console.log('Base Directory:', baseDir);
-console.log('================================');
 
 // ファイルシステムのアクセス確認
 try {
   fs.accessSync(baseDir, fs.constants.R_OK);
-  console.log(`ベースディレクトリにアクセス可能: ${baseDir}`);
   // ディレクトリの内容をログ出力
   const files = fs.readdirSync(baseDir);
-  console.log(`ベースディレクトリ内のファイル数: ${files.length}`);
   if (files.includes('index.html')) {
     console.log('index.html が見つかりました');
   } else {
@@ -64,7 +52,7 @@ function getMimeType(filePath) {
 
 function serveFile(filePath, res) {
   const mimeType = getMimeType(filePath);
-  console.log(`配信ファイル: ${filePath}, MIME: ${mimeType}`);
+  // console.log(`配信ファイル: ${filePath}, MIME: ${mimeType}`);
 
   fs.readFile(filePath, (err, data) => {
     if (err) {
@@ -74,7 +62,7 @@ function serveFile(filePath, res) {
       return;
     }
 
-    console.log(`ファイル読み込み成功: ${filePath}, サイズ: ${data.length} バイト`);
+    // console.log(`ファイル読み込み成功: ${filePath}, サイズ: ${data.length} バイト`);
     res.writeHead(200, {
       'Content-Type': mimeType,
       'Cache-Control': 'no-store, no-cache, must-revalidate',
