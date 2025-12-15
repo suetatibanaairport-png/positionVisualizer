@@ -141,44 +141,11 @@
   console.log('Position Visualizer Directory:', positionVisualizerDir);
 
   // ディレクトリ確認をより強固に
-  function ensureDirectoryExists(dir, name) {
-    try {
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-        console.log(`${name}ディレクトリを作成しました`);
-      }
+  // ログディレクトリとJSONディレクトリの作成を行わない
+  console.log('ログとJSONファイルの保存を無効化して実行します');
 
-      // 書き込み権限の確認
-      try {
-        fs.accessSync(dir, fs.constants.W_OK);
-      } catch (accessErr) {
-        console.warn(`${name}ディレクトリへの書き込み権限がありません:`, accessErr.message);
-        throw accessErr;
-      }
-
-      return dir;
-    } catch (err) {
-      console.error(`${name}ディレクトリエラー:`, err.message);
-      // エラー時の代替ディレクトリ（カレントディレクトリ）
-      const altDir = path.join(process.cwd(), name);
-      console.log(`代替${name}ディレクトリを作成します: ${altDir}`);
-      try {
-        fs.mkdirSync(altDir, { recursive: true });
-        return altDir;
-      } catch (e) {
-        console.error(`代替${name}ディレクトリの作成に失敗しました:`, e.message);
-        // 最終手段としてテンポラリディレクトリを使用
-        const tmpDir = path.join(require('os').tmpdir(), name);
-        console.warn(`テンポラリディレクトリを使用します: ${tmpDir}`);
-        fs.mkdirSync(tmpDir, { recursive: true });
-        return tmpDir;
-      }
-    }
-  }
-
-  // ディレクトリの確認と作成
-  const logsDir = ensureDirectoryExists(path.join(positionVisualizerDir, 'logs'), 'logs');
-  const jsonDir = ensureDirectoryExists(path.join(positionVisualizerDir, 'json'), 'json');
+  // メモリ内にログを一時的に保存する変数
+  const memoryLogs = {};
 
   const server = http.createServer((req, res) => {
     // Basic health + optional HTTP fallback for debugging
@@ -191,7 +158,7 @@
       return;
     }
     
-    // Log saving endpoint
+    // Log saving endpoint (インメモリ保存)
     if (req.method === 'POST' && req.url === '/save-log') {
       let body = '';
       req.on('data', chunk => {
@@ -205,22 +172,15 @@
             res.end(JSON.stringify({ error: 'Invalid data format' }));
             return;
           }
-          
+
           const filename = data.filename || `meter-log-${Date.now()}.json`;
-          const filepath = path.join(jsonDir, filename);
-          const jsonContent = JSON.stringify(data.records, null, 2);
-          
-          fs.writeFile(filepath, jsonContent, 'utf8', (err) => {
-            if (err) {
-              console.error('Failed to save log:', err);
-              res.writeHead(500, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ error: 'Failed to save log file' }));
-              return;
-            }
-            console.log(`Log saved: ${filepath}`);
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ success: true, filename: filename }));
-          });
+          // メモリ内に保存
+          memoryLogs[filename] = data.records;
+
+          console.log(`Log saved in memory: ${filename}`);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: true, filename: filename }));
+
         } catch (error) {
           console.error('Error parsing log data:', error);
           res.writeHead(400, { 'Content-Type': 'application/json' });
