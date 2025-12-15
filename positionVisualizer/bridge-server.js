@@ -6,10 +6,19 @@
   const path = require('path');
   const io = require('socket.io-client');
 
+  // 環境情報のログ出力
+  console.log('==== Bridge Server Environment ====');
+  console.log('OS Platform:', process.platform);
+  console.log('Node Version:', process.version);
+  console.log('Working Directory:', process.cwd());
+  console.log('Script Directory:', __dirname);
+  console.log('==================================');
+
   let latest = { values: [null, null, null, null, null, null], names: [], icon: 'assets/icon.svg', svg: '', ts: Date.now() };
-  
+
   // LeverAPI integration
   const LEVER_API_URL = process.env.LEVER_API_URL || 'http://127.0.0.1:5001';
+  console.log('LeverAPI URL:', LEVER_API_URL);
   
   // Map device_id to index (lever1 -> 0, lever2 -> 1, etc.)
   function getDeviceIndex(deviceId) {
@@ -135,21 +144,54 @@
     }
   }
 
-  // Get positionVisualizer directory (go up one level from tools)
-  const toolsDir = __dirname;
-  const positionVisualizerDir = path.resolve(toolsDir, '..');
+  // Get positionVisualizer directory
+  const positionVisualizerDir = __dirname;
+  console.log('Position Visualizer Directory:', positionVisualizerDir);
 
-  // Ensure logs directory exists
-  const logsDir = path.join(positionVisualizerDir, 'logs');
-  if (!fs.existsSync(logsDir)) {
-    fs.mkdirSync(logsDir, { recursive: true });
+  // ディレクトリ確認をより強固に
+  function ensureDirectoryExists(dir, name) {
+    console.log(`${name}ディレクトリを確認中: ${dir}`);
+    try {
+      if (!fs.existsSync(dir)) {
+        console.log(`${name}ディレクトリが存在しないため作成します`);
+        fs.mkdirSync(dir, { recursive: true });
+        console.log(`${name}ディレクトリを作成しました`);
+      } else {
+        console.log(`${name}ディレクトリは既に存在します`);
+      }
+
+      // 書き込み権限の確認
+      try {
+        fs.accessSync(dir, fs.constants.W_OK);
+        console.log(`${name}ディレクトリに書き込み権限があります`);
+      } catch (accessErr) {
+        console.warn(`${name}ディレクトリへの書き込み権限がありません:`, accessErr.message);
+        throw accessErr;
+      }
+
+      return dir;
+    } catch (err) {
+      console.error(`${name}ディレクトリエラー:`, err.message);
+      // エラー時の代替ディレクトリ（カレントディレクトリ）
+      const altDir = path.join(process.cwd(), name);
+      console.log(`代替${name}ディレクトリを作成します: ${altDir}`);
+      try {
+        fs.mkdirSync(altDir, { recursive: true });
+        return altDir;
+      } catch (e) {
+        console.error(`代替${name}ディレクトリの作成に失敗しました:`, e.message);
+        // 最終手段としてテンポラリディレクトリを使用
+        const tmpDir = path.join(require('os').tmpdir(), name);
+        console.warn(`テンポラリディレクトリを使用します: ${tmpDir}`);
+        fs.mkdirSync(tmpDir, { recursive: true });
+        return tmpDir;
+      }
+    }
   }
 
-  // Ensure json directory exists
-  const jsonDir = path.join(positionVisualizerDir, 'json');
-  if (!fs.existsSync(jsonDir)) {
-    fs.mkdirSync(jsonDir, { recursive: true });
-  }
+  // ディレクトリの確認と作成
+  const logsDir = ensureDirectoryExists(path.join(positionVisualizerDir, 'logs'), 'logs');
+  const jsonDir = ensureDirectoryExists(path.join(positionVisualizerDir, 'json'), 'json');
 
   const server = http.createServer((req, res) => {
     // Basic health + optional HTTP fallback for debugging
@@ -256,6 +298,36 @@
   const HOST = process.env.BRIDGE_HOST || '127.0.0.1';
   server.listen(PORT, HOST, () => {
     console.log(`bridge listening ws://${HOST}:${PORT}`);
+  });
+
+  // エラーハンドリングの強化
+  server.on('error', (err) => {
+    console.error('WebSocketサーバーエラー:', err);
+    if (err.code === 'EADDRINUSE') {
+      console.error(`ポート ${PORT} は既に使用されています。別のポートを試します...`);
+      server.close();
+      const newPort = PORT + 1;
+      server.listen(newPort, HOST, () => {
+        console.log(`代替ポート ${newPort} で起動しました: ws://${HOST}:${newPort}`);
+        console.log(`環境変数 BRIDGE_PORT=${newPort} を設定することで、このポートを永続的に使用できます`);
+      });
+    } else {
+      console.error('想定外のサーバーエラー。エラー詳細:', err);
+      console.error('可能であれば処理を継続します');
+    }
+  });
+
+  // プロセス終了時の処理
+  process.on('SIGINT', () => {
+    console.log('プロセスが中断されました。リソースをクリーンアップしています...');
+    if (leverApiSocket) {
+      leverApiSocket.disconnect();
+      console.log('LeverAPI接続を切断しました');
+    }
+    server.close(() => {
+      console.log('WebSocketサーバーを停止しました');
+      process.exit(0);
+    });
   });
 })();
 

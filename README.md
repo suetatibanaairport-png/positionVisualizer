@@ -18,51 +18,64 @@ LeverSystemは、ESP8266ベースのレバーデバイスから送信される�
 
 ```
 leverSystem/
-├── positionVisualizer/    # フロントエンド（HTML/JavaScript）
-│   ├── index.html         # メインウィンドウ
-│   ├── overlay.html       # オーバーレイウィンドウ
-│   ├── js/                # JavaScriptソースコード
-│   └── tools/             # サーバーツール
-├── LeverAPI/              # Python APIサーバー
-│   ├── app.py             # メインAPIサーバー
-│   └── requirements.txt   # Python依存パッケージ
-├── LeverFirmware/         # Arduinoファームウェア
-│   └── LeverFirmware.ino  # ESP8266ファームウェア
-├── node-portable/         # Node.jsポータブル版
-├── python-portable/       # Pythonポータブル版
-├── start-visualizer.bat   # メイン起動スクリプト
-├── setup-node-portable.bat    # Node.jsポータブル版セットアップ
-└── setup-python-portable.bat  # Pythonポータブル版セットアップ
+├── positionVisualizer/        # フロントエンド（HTML/JavaScript）
+│   ├── index.html             # メインウィンドウ
+│   ├── overlay.html           # オーバーレイウィンドウ
+│   ├── js/                    # JavaScriptソースコード
+│   ├── http-server.js         # HTTPサーバー
+│   ├── bridge-server.js       # WebSocketブリッジサーバー
+│   ├── integrated-server.js   # 統合サーバー
+│   └── other server files     # その他のサーバー関連ファイル
+├── app/                       # コンパイル済み実行ファイル
+│   ├── Windows/               # Windows向け実行ファイル
+│   └── macOS/                 # macOS向け実行ファイル
+├── LeverAPI/                  # Python APIサーバー
+│   ├── app.py                 # メインAPIサーバー
+│   └── requirements.txt       # Python依存パッケージ
+├── LeverFirmware/             # Arduinoファームウェア
+│   └── LeverFirmware.ino      # ESP8266ファームウェア
+├── node-portable/             # Node.jsポータブル版
+├── python-portable/           # Pythonポータブル版
+└── start-visualizer.bat       # メイン起動スクリプト
 ```
 
 ## クイックスタート
 
 ### 1. 初回セットアップ（インターネット接続が必要）
 
-#### 方法A: 自動セットアップ（推奨）
+#### 方法A: 実行ファイルを使用（推奨）
 
-1. `start-visualizer.bat` をダブルクリック
-2. 確認ダイアログで「実行」を選択
-3. Node.jsとPythonが自動的にダウンロード・セットアップされます
+1. `app/Windows/` または `app/macOS/` ディレクトリの実行ファイルを使用
+2. `LeverVisualizer.exe`（Windows）または `LeverVisualizer`（macOS）を実行
 
-#### 方法B: 個別セットアップ
+#### 方法B: ソースコードから起動
 
 1. **Node.jsポータブル版のセットアップ**
-   - `setup-node-portable.bat` を実行
-   - 約50MBのダウンロードが必要です
+   - 必要に応じて `npm install` を実行して依存パッケージをインストール
+   - `cd positionVisualizer && node integrated-server.js` を実行
 
-2. **Pythonポータブル版のセットアップ**
-   - `setup-python-portable.bat` を実行
-   - 約25MBのダウンロードが必要です
+2. **サーバーを個別に起動**
+   - HTTP Server: `cd positionVisualizer && node http-server.js`
+   - Bridge Server: `cd positionVisualizer && node bridge-server.js`
+   - API Server: `cd LeverAPI && python app.py`
 
-### 2. 起動
+### 2. サーバーの起動
 
-1. `start-visualizer.bat` をダブルクリック
-2. 以下のサーバーが自動的に起動します：
+#### 方法A: 統合サーバー（推奨）
+
+1. `LeverVisualizer.exe`（Windows）または `LeverVisualizer`（macOS）を実行
+2. 統合サーバーが自動的に以下のサービスを起動します：
    - LeverAPI Server (ポート5000)
    - HTTP Server (ポート8000)
    - Bridge Server (ポート8123)
 3. ブラウザでメインウィンドウとオーバーレイウィンドウが自動的に開きます
+
+#### 方法B: 個別サーバー起動
+
+1. LeverAPI Server: `app/[OS]/LeverAPI.exe` または `cd LeverAPI && python app.py`
+2. HTTP Server: `app/[OS]/LeverHTTP.exe` または `cd positionVisualizer && node http-server.js`
+3. Bridge Server: `app/[OS]/LeverBridge.exe` または `cd positionVisualizer && node bridge-server.js`
+4. ブラウザで `http://localhost:8000/` にアクセス
 
 ### 3. 終了
 
@@ -118,12 +131,20 @@ LeverAPIのコードを更新した場合、PyInstallerを使用して再コン�
 **重要**: PyInstallerは実行している環境（OS）向けの実行ファイルしか生成できません。クロスプラットフォームビルド（MacからWindows用バイナリを作成するなど）には対応していません。Windows用の実行ファイル（.exe）を生成するには、Windows環境でコマンドを実行する必要があります。
 
 ```bash
-# 依存パッケージが追加された場合はインストール
+# positionVisualizerディレクトリから実行
+npm run build:api  # 現在の環境に合ったビルドを実行
+
+# または個別に実行する場合
+# Windows環境の場合
+npm run build:api:win
+
+# macOS環境の場合
+npm run build:api:mac
+
+# または手動で実行する場合
 cd ./LeverAPI
 pip install -r requirements.txt
-
-# コンパイル実行（実行環境と同じOS向けの実行ファイルが生成されます）
-pyinstaller --onefile --collect-submodules=dns --collect-submodules=eventlet \
+python -m PyInstaller --onefile --collect-submodules=dns --collect-submodules=eventlet \
   --hidden-import=engineio.async_drivers.eventlet \
   --hidden-import=api.discovery --hidden-import=api.device_manager \
   --hidden-import=api.transformers --hidden-import=api.cache \
@@ -138,23 +159,37 @@ macOSでコンパイルした場合は `.exe` 拡張子なしの実行ファイ�
 
 フロントエンドのコードを更新した場合、以下の手順で再コンパイルします。
 
-**注意**: Node.jsの`pkg`ツールはクロスプラットフォームビルドをサポートしているため、macOSからでもWindows用の実行ファイルを生成できます。
+**注意**: Bunのビルドツールはクロスプラットフォームビルドをサポートしているため、macOSからでもWindows用の実行ファイルを生成できます。
 
 ```bash
+# positionVisualizerディレクトリに移動
+cd positionVisualizer
+
 # 依存パッケージが追加された場合はインストール
 npm install
 
-# Windows用実行ファイルの生成（macOSからでも実行可能）
-npm run build:win
+# メインビルドコマンド - サーバーとAPIをビルド
+npm run build              # サーバー類とAPIをビルド（デフォルト）
 
-# macOS向けにビルドする場合
-npm run build:mac
+# 統合サーバー（LeverVisualizer）のビルド
+npm run build:win          # Windows版のみビルド
+npm run build:mac          # macOS版のみビルド
 
-# Linux向けにビルドする場合
-npm run build:linux
+# HTTPサーバー（LeverHTTP）とWebSocketブリッジ（LeverBridge）のビルド
+npm run build:servers      # 両方のサーバーをビルド
+npm run build:http         # HTTPサーバーのみビルド（Windows版とmacOS版の両方）
+npm run build:bridge       # Bridgeサーバーのみビルド（Windows版とmacOS版の両方）
+
+# APIサーバー（LeverAPI）のビルド
+npm run build:api          # APIサーバーをビルド（実行環境用）
+npm run build:api:win      # Windows版のみビルド（Windows環境でのみ実行可能）
+npm run build:api:mac      # macOS版のみビルド（macOS環境でのみ実行可能）
 ```
 
-コンパイル後の実行ファイルは `./app/[OS name]/LeverScope.exe`（Windows向け）に作成されます。
+コンパイル後の実行ファイルは以下の場所に作成されます：
+- Windows版: `./app/Windows/LeverVisualizer.exe`, `./app/Windows/LeverHTTP.exe`, `./app/Windows/LeverBridge.exe`
+- macOS版: `./app/macOS/LeverVisualizer`, `./app/macOS/LeverHTTP`, `./app/macOS/LeverBridge`
+
 プロジェクトで使用している実行ファイルを新しくコンパイルしたものと置き換えてください。
 
 ### 注意事項
@@ -164,8 +199,8 @@ npm run build:linux
 2. **隠れた依存関係**: PyInstallerで新しいモジュールを使用する場合、`--hidden-import` オプションの追加が必要になることがあります。
 
 3. **クロスプラットフォームビルド**:
-   - Python (LeverAPI): 実行している環境と同じOS向けの実行ファイルしか生成できません。Windows用の.exeファイルが必要な場合は、Windows環境でコンパイルする必要があります。
-   - Node.js (フロントエンド): pkg ツールはクロスプラットフォームビルドをサポートしているため、macOSからでもWindows用の実行ファイルを生成できます。
+   - Python (LeverAPI): PyInstallerは実行している環境と同じOS向けの実行ファイルしか生成できません。Windows用の.exeファイルが必要な場合は、Windows環境でコンパイルする必要があります。
+   - JavaScript (サーバー): Bunのコンパイラはクロスプラットフォームビルドをサポートしているため、macOSからでもWindows用の実行ファイルを生成できます。
 
 4. **ファイルパス**: コンパイル後の実行ファイルは、それぞれ適切なディレクトリに移動・配置してください。
 

@@ -9,9 +9,35 @@ const url = require('url');
 const PORT = Number(process.env.HTTP_PORT || 8000);
 const HOST = process.env.HTTP_HOST || '127.0.0.1';
 
-// Get the directory containing this script, then go up one level to positionVisualizer
+// コンパイル後のバイナリでは、ファイルは同じディレクトリにある必要がある
 const toolsDir = __dirname;
-const baseDir = path.resolve(toolsDir, '..');
+const baseDir = __dirname;
+console.log('Base directory for static files:', baseDir);
+
+// 環境情報のログ出力
+console.log('==== HTTP Server Environment ====');
+console.log('OS Platform:', process.platform);
+console.log('Node Version:', process.version);
+console.log('Working Directory:', process.cwd());
+console.log('Script Directory:', toolsDir);
+console.log('Base Directory:', baseDir);
+console.log('================================');
+
+// ファイルシステムのアクセス確認
+try {
+  fs.accessSync(baseDir, fs.constants.R_OK);
+  console.log(`ベースディレクトリにアクセス可能: ${baseDir}`);
+  // ディレクトリの内容をログ出力
+  const files = fs.readdirSync(baseDir);
+  console.log(`ベースディレクトリ内のファイル数: ${files.length}`);
+  if (files.includes('index.html')) {
+    console.log('index.html が見つかりました');
+  } else {
+    console.warn('警告: index.html が見つかりません');
+  }
+} catch (err) {
+  console.error(`ベースディレクトリへのアクセスエラー: ${err.message}`);
+}
 
 // MIME types
 const mimeTypes = {
@@ -38,15 +64,18 @@ function getMimeType(filePath) {
 
 function serveFile(filePath, res) {
   const mimeType = getMimeType(filePath);
-  
+  console.log(`配信ファイル: ${filePath}, MIME: ${mimeType}`);
+
   fs.readFile(filePath, (err, data) => {
     if (err) {
+      console.error(`ファイル読み込みエラー (${filePath}):`, err.message);
       res.writeHead(404, { 'Content-Type': 'text/plain' });
       res.end('404 Not Found');
       return;
     }
-    
-    res.writeHead(200, { 
+
+    console.log(`ファイル読み込み成功: ${filePath}, サイズ: ${data.length} バイト`);
+    res.writeHead(200, {
       'Content-Type': mimeType,
       'Cache-Control': 'no-store, no-cache, must-revalidate',
       'Pragma': 'no-cache',
@@ -106,14 +135,23 @@ server.listen(PORT, HOST, () => {
   console.log(`Serving files from: ${baseDir}`);
 });
 
-// Handle errors
+// サーバーのエラーハンドリングを強化
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
-    console.error(`Port ${PORT} is already in use.`);
-    console.error(`Please close the application using port ${PORT} or set HTTP_PORT environment variable to use a different port.`);
+    console.error(`ポート ${PORT} は既に使用されています。`);
+    console.error(`別のポートを試します...`);
+
+    // 別のポートを試す
+    server.close();
+    const newPort = PORT + 1;
+    server.listen(newPort, HOST, () => {
+      console.log(`代替ポート ${newPort} で起動しました: http://${HOST}:${newPort}`);
+      console.log(`環境変数 HTTP_PORT=${newPort} を設定することで、このポートを永続的に使用できます`);
+    });
   } else {
-    console.error('Server error:', err);
+    console.error('サーバーエラー詳細:', err);
+    // 終了せずにエラーをログ
+    console.error('サーバー起動に失敗しましたが、処理を継続します');
   }
-  process.exit(1);
 });
 

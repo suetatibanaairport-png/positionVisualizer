@@ -37,10 +37,12 @@ positionVisualizer/
 │   │   └── bindings.js
 │   └── services/          # サービス
 │       └── replay.js      # ログ再生機能
-├── tools/
-│   ├── http-server.js     # HTTPサーバー（静的ファイル配信）
-│   ├── bridge-server.js   # WebSocketブリッジサーバー
-│   └── generate-log.js    # ログ生成ツール
+├── http-server.js         # HTTPサーバー（静的ファイル配信）
+├── bridge-server.js       # WebSocketブリッジサーバー
+├── generate-log.js        # ログ生成ツール
+├── bundle-static.js       # 静的リソースバンドルツール
+├── http-server-bundled.js # バンドル済みHTTPサーバー
+├── integrated-server.js   # 統合サーバー
 ├── assets/
 │   └── icon.svg           # デフォルトアイコン
 ├── sw.js                   # Service Worker（PWA対応）
@@ -68,7 +70,7 @@ npm install
 #### 2. HTTPサーバーの起動
 
 ```bash
-node tools/http-server.js
+node http-server.js
 ```
 
 デフォルトで `http://127.0.0.1:8000` で起動します。
@@ -76,7 +78,7 @@ node tools/http-server.js
 #### 3. Bridgeサーバーの起動（別ターミナル）
 
 ```bash
-node tools/bridge-server.js
+node bridge-server.js
 ```
 
 デフォルトでポート8123で起動します。
@@ -138,7 +140,7 @@ positionVisualizerは、LeverAPIサーバーと以下の方法で連携します
 
 ### Bridgeサーバー
 
-`bridge-server.js` は以下の役割を果たします：
+`bridge-server.js`（以前は `tools/bridge-server.js`）は以下の役割を果たします：
 
 - LeverAPI（Socket.IO）とフロントエンド（WebSocket）のブリッジ
 - デバイスIDをインデックスにマッピング（lever1 → 0, lever2 → 1, etc.）
@@ -167,7 +169,7 @@ positionVisualizerは、LeverAPIサーバーと以下の方法で連携します
 
 1. `index.html` のデバイス入力フィールドを変更
 2. `js/core/model.js` のデバイス配列サイズを変更
-3. `tools/bridge-server.js` のデバイスインデックスマッピングを調整
+3. `bridge-server.js` のデバイスインデックスマッピングを調整
 
 #### スタイルの変更
 
@@ -185,7 +187,7 @@ positionVisualizerは、LeverAPIサーバーと以下の方法で連携します
 
 1. Bridgeサーバーがポート8123で起動しているか確認
 2. ファイアウォールの設定を確認
-3. `tools/bridge-server.js` の設定を確認
+3. `bridge-server.js` の設定を確認
 
 ### ログが再生されない
 

@@ -21,14 +21,88 @@
     </script>
     <style>
       /* Fallback styles */
-      .container{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;justify-content:center;padding:0;max-width:100%;min-height:calc(100vh - 40px);margin:0 auto;}
+      .container{
+        display:flex;
+        flex-wrap:wrap;
+        gap:20px;
+        align-items:flex-start;
+        justify-content:center;
+        padding:10px;
+        max-width:100%;
+        min-height:calc(100vh - 40px);
+        margin:0 auto;
+        box-sizing: border-box;
+      }
       .controls{flex:0 1 calc(50% - 10px);min-width:300px;max-width:500px;height:480px;border:1px solid #334155;padding:20px;border-radius:16px}
-      .visualizer{flex:1 1 calc(50% - 10px);min-width:300px;max-width:740px;height:480px;border:1px solid #334155;padding:24px;border-radius:16px;min-height:400px}
+      .visualizer{flex:1 1 calc(50% - 10px);min-width:300px;max-width:740px;height:480px;border:1px solid #334155;padding:20px;border-radius:16px;min-height:400px;display:flex;flex-direction:column}
       .range-settings-section{flex:0 1 calc(50% - 10px);min-width:300px;max-width:500px;border:1px solid #334155;padding:16px;border-radius:16px}
       .log-sections{flex:1 1 calc(50% - 10px);min-width:300px;max-width:740px;border:1px solid #334155;padding:16px;border-radius:16px}
-      .meter-container{position:relative;width:100%;max-width:980px;margin:0 auto;aspect-ratio:16/9}
+      .meter-container{position:relative;width:100%;max-width:980px;margin:0 auto;aspect-ratio:16/9;flex:1}
       #icons-container{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
       button{cursor:pointer}
+
+      /* オーバーレイボタン用スタイル */
+      .visualizer-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+        width: 100%;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+      .visualizer-title {
+        margin: 0;
+        font-size: 20px;
+        font-weight: 600;
+        flex: 1;
+        min-width: 120px;
+      }
+      .overlay-button {
+        background-color: #334155;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        padding: 8px 14px;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.2s;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        white-space: nowrap;
+        line-height: 1.2;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 140px;
+      }
+      .overlay-button:hover {
+        background-color: #1e293b;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+      }
+
+      /* レスポンシブ対応 */
+      @media (max-width: 768px) {
+        .container {
+          padding: 8px;
+          gap: 12px;
+        }
+      }
+
+      @media (max-width: 500px) {
+        .visualizer-header {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+        .visualizer-title {
+          margin-bottom: 8px;
+        }
+        .overlay-button {
+          width: 100%;
+        }
+        .visualizer, .controls, .range-settings-section, .log-sections {
+          padding: 15px;
+        }
+      }
     </style>
     <script>
       // キャッシュクリア用のビルドクエリ
@@ -86,7 +160,12 @@
         </div>
 
         <div class="visualizer">
-            <h2 class="visualizer-title">プレビュー</h2>
+            <div class="visualizer-header">
+                <h2 class="visualizer-title">プレビュー</h2>
+                <button id="open-overlay" class="overlay-button" title="オーバーレイウィンドウを開く">
+                    オーバーレイを開く
+                </button>
+            </div>
             <div class="meter-container" id="meter-container">
                 <div id="icons-container"></div>
             </div>
@@ -131,6 +210,18 @@
 
     <script>window.USE_MVVM = true;</script>
     <script src="src/app/main.js"></script>
+    <script>
+        // オーバーレイを開くボタンの機能を追加
+        document.addEventListener('DOMContentLoaded', function() {
+            const openOverlayButton = document.getElementById('open-overlay');
+            if (openOverlayButton) {
+                openOverlayButton.addEventListener('click', function() {
+                    // 別ウィンドウでオーバーレイを開く
+                    window.open('overlay.html', 'overlay_window', 'width=800,height=600,menubar=no,toolbar=no,location=no,status=no');
+                });
+            }
+        });
+    </script>
 </body>
 </html>
 

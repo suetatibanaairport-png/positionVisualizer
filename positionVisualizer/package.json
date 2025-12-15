@@ -2,14 +2,33 @@
   "name": "lever-scope",
   "version": "1.0.0",
   "description": "レバー位置可視化アプリケーション",
-  "main": "integrated-server.js",
-  "bin": "integrated-server.js",
+  "main": "http-server.js",
+  "bin": "http-server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node integrated-server.js",
-    "build": "npm run build:win && npm run build:mac",
-    "build:win": "bun build ./integrated-server.js --compile --target=bun-windows-x64 --outfile ../app/Windows/LeverVisualizer.exe",
-    "build:mac": "bun build ./integrated-server.js --compile --target=bun-darwin-arm64 --outfile ../app/macOS/LeverVisualizer"
+    "start": "node ./http-server.js && node ./bridge-server.js",
+    "build": "npm run build:servers && npm run build:api",
+    "build:win": "npm run build:http:win && npm run build:bridge:win && npm run build:api:win",
+    "build:mac": "npm run build:http:mac && npm run build:bridge:mac && npm run build:api:mac",
+
+    "build:servers": "npm run build:http && npm run build:bridge",
+    "bundle-static": "node ./bundle-static.js",
+
+    "build:http": "npm run bundle-static && npm run build:http:win && npm run build:http:mac",
+    "build:http:win": "bun build ./http-server-bundled.js --compile --target=bun-windows-x64 --outfile ../app/Windows/LeverHTTP.exe",
+    "build:http:mac": "bun build ./http-server-bundled.js --compile --target=bun-darwin-arm64 --outfile ../app/macOS/LeverHTTP",
+
+    "build:http:nobundle": "npm run build:http:nobundle:win && npm run build:http:nobundle:mac",
+    "build:http:nobundle:win": "bun build ./http-server.js --compile --target=bun-windows-x64 --outfile ../app/Windows/LeverHTTP.exe",
+    "build:http:nobundle:mac": "bun build ./http-server.js --compile --target=bun-darwin-arm64 --outfile ../app/macOS/LeverHTTP",
+
+    "build:bridge": "npm run build:bridge:win && npm run build:bridge:mac",
+    "build:bridge:win": "bun build ./bridge-server.js --compile --target=bun-windows-x64 --outfile ../app/Windows/LeverBridge.exe",
+    "build:bridge:mac": "bun build ./bridge-server.js --compile --target=bun-darwin-arm64 --outfile ../app/macOS/LeverBridge",
+
+    "build:api": "npm run build:api:win || npm run build:api:mac",
+    "build:api:win": "cd ../LeverAPI && python -m PyInstaller --onefile --collect-submodules=dns --collect-submodules=eventlet --hidden-import=engineio.async_drivers.eventlet --hidden-import=api.discovery --hidden-import=api.device_manager --hidden-import=api.transformers --hidden-import=api.cache --name LeverAPI app.py && copy /Y dist\\LeverAPI.exe ..\\app\\Windows\\",
+    "build:api:mac": "cd ../LeverAPI && python3 -m PyInstaller --onefile --collect-submodules=dns --collect-submodules=eventlet --hidden-import=engineio.async_drivers.eventlet --hidden-import=api.discovery --hidden-import=api.device_manager --hidden-import=api.transformers --hidden-import=api.cache --name LeverAPI app.py && cp dist/LeverAPI ../app/macOS/"
   },
   "repository": {
     "type": "git",
