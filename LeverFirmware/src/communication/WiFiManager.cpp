@@ -29,7 +29,7 @@ RealWiFiManager::RealWiFiManager(uint16_t httpPort)
     _reconnectAttemptCount(0), // 追加: 再接続カウンター初期化
     _lastReconnectAttempt(0) // 追加: 最終再接続時間の初期化
 {
-  _deviceId = "lever" + String(ESP.getChipId() & 0xFFFF, HEX); // チップIDからデフォルトのデバイスIDを生成
+  _deviceId = "lever" + String(ESP.getChipId() & 0xFFFFFF, HEX); // チップIDからデフォルトのデバイスIDを生成
 }
 
 // デストラクタ
@@ -67,6 +67,7 @@ void RealWiFiManager::begin()
     const int MAX_INIT_ATTEMPTS = 5; // 初期接続の最大試行回数
 
     DEBUG_INFO("WiFi接続確認開始...");
+    DEBUG_INFO("MACアドレス: " + String(WiFi.macAddress()));
 
     while (!connected && attempts < MAX_INIT_ATTEMPTS) {
       attempts++;

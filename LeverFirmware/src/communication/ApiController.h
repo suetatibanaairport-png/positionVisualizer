@@ -17,7 +17,7 @@ using ResetCalibrationCallback = std::function<void()>;
 using SetLedModeCallback = std::function<void(int)>;
 using GetLeverValueCallback = std::function<int()>;
 using GetRawValueCallback = std::function<int()>;
-using GetCalibrationInfoCallback = std::function<void(int&, int&, bool&)>;
+using GetCalibrationInfoCallback = std::function<void(int&, int&, int&, bool&)>;
 
 class ApiController {
 public:

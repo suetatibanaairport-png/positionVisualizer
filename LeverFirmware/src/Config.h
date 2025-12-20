@@ -33,8 +33,10 @@
 #define UDP_DISCOVERY_PORT 4210 // UDPディスカバリー用のポート番号
 
 // センサー読み取り設定
-#define SMOOTHING_FACTOR 1      // センサー値の平滑化係数（大きいほど滑らか）
-#define CALIB_TIMEOUT 10000     // キャリブレーションタイムアウト（ミリ秒）
+#define SMOOTHING_FACTOR 5      // センサー値の平滑化係数（大きいほど滑らか）
+#define CALIB_TIMEOUT 30000     // キャリブレーションタイムアウト（ミリ秒）
 #define UPDATE_INTERVAL 50      // データ更新間隔（ミリ秒）- 20Hz
+
+#define DEAD_ZONE 1       // 不感帯の閾値
 
 #endif // CONFIG_H

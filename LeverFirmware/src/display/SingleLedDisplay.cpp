@@ -103,18 +103,37 @@ void SingleLedDisplay::setErrorCode(uint8_t code)
 // 通電状態表示（長いON, 短いOFF）
 void SingleLedDisplay::displayPowerOn()
 {
-  const unsigned long ON_TIME = 1500;   // 1.5秒オン
-  const unsigned long OFF_TIME = 500;   // 0.5秒オフ
+  const unsigned long ON_TIME = 2000;   // 2秒オン
+  const unsigned long OFF_TIME = 100;  // 0.1秒間隔
+  //const int PATTERN_LENGTH = 3;         // オン→オフ→ノーマルモードへ
 
   unsigned long currentTime = millis();
   unsigned long elapsed = currentTime - _lastUpdateTime;
+  unsigned long stepTime;
 
-  if ((_ledState && elapsed >= ON_TIME) || (!_ledState && elapsed >= OFF_TIME)) {
-    _ledState = !_ledState;
-    _led->setLed(_ledState);
+  // ステップによって時間を変える
+  if (_patternStep == 0) {
+    stepTime = ON_TIME;  // オン時間
+    if (!_ledState) {
+      _ledState = true;
+      _led->setLed(true);
+      DEBUG_VERBOSE("Power-on pattern: LED ON");
+    }
+  } else if (_patternStep == 1) {
+    stepTime = OFF_TIME; // オフ時間
+    if (_ledState) {
+      _ledState = false;
+      _led->setLed(false);
+      DEBUG_VERBOSE("Power-on pattern: LED OFF");
+    }
+  } else {
+    setMode(SingleLedDisplay::NORMAL_OPERATION);
+    return;
+  }
+
+  if (elapsed >= stepTime) {
+    _patternStep = _patternStep + 1;
     _lastUpdateTime = currentTime;
-
-    DEBUG_VERBOSE("Power-on pattern: LED " + String(_ledState ? "ON" : "OFF"));
   }
 }
 
@@ -123,8 +142,7 @@ void SingleLedDisplay::displayCalibrated()
 {
   const unsigned long BLINK_ON_TIME = 200;    // 0.2秒オン
   const unsigned long BLINK_OFF_TIME = 200;   // 0.2秒オフ
-  const unsigned long PAUSE_TIME = 1000;      // 1秒間隔
-  const int PATTERN_LENGTH = 5;               // オン→オフ→オン→オフ→ポーズ
+  const int PATTERN_LENGTH = 5;               // オン→オフ→オン→オフ→ノーマアルモードへ
 
   unsigned long currentTime = millis();
   unsigned long elapsed = currentTime - _lastUpdateTime;
@@ -146,12 +164,8 @@ void SingleLedDisplay::displayCalibrated()
       DEBUG_VERBOSE("Calibrated pattern: LED OFF (step " + String(_patternStep) + ")");
     }
   } else {
-    stepTime = PAUSE_TIME;     // ポーズ時間
-    if (_ledState) {
-      _ledState = false;
-      _led->setLed(false);
-      DEBUG_VERBOSE("Calibrated pattern: PAUSE");
-    }
+    setMode(SingleLedDisplay::NORMAL_OPERATION);
+    return;
   }
 
   if (elapsed >= stepTime) {
@@ -165,8 +179,7 @@ void SingleLedDisplay::displayWifiConnected()
 {
   const unsigned long BLINK_ON_TIME = 200;    // 0.2秒オン
   const unsigned long BLINK_OFF_TIME = 200;   // 0.2秒オフ
-  const unsigned long PAUSE_TIME = 1000;      // 1秒間隔
-  const int PATTERN_LENGTH = 7;               // オン→オフ→オン→オフ→オン→オフ→ポーズ
+  const int PATTERN_LENGTH = 7;               // オン→オフ→オン→オフ→オン→オフ→ノーマアルモードへ
 
   unsigned long currentTime = millis();
   unsigned long elapsed = currentTime - _lastUpdateTime;
@@ -188,12 +201,8 @@ void SingleLedDisplay::displayWifiConnected()
       DEBUG_VERBOSE("WiFi pattern: LED OFF (step " + String(_patternStep) + ")");
     }
   } else {
-    stepTime = PAUSE_TIME;     // ポーズ時間
-    if (_ledState) {
-      _ledState = false;
-      _led->setLed(false);
-      DEBUG_VERBOSE("WiFi pattern: PAUSE");
-    }
+    setMode(SingleLedDisplay::NORMAL_OPERATION);
+    return;
   }
 
   if (elapsed >= stepTime) {
@@ -205,27 +214,56 @@ void SingleLedDisplay::displayWifiConnected()
 // 正常稼働状態表示（常時点灯）
 void SingleLedDisplay::displayNormalOperation()
 {
-  if (!_ledState) {
-    _ledState = true;
-    _led->setLed(true);
-    DEBUG_VERBOSE("Normal operation: LED ON");
+  const unsigned long ON_TIME = 50;   // 0.05秒オン
+  const unsigned long OFF_TIME = 1950;   // 1.95秒オフ
+
+  unsigned long currentTime = millis();
+  unsigned long elapsed = currentTime - _lastUpdateTime;
+
+  if ((_ledState && elapsed >= ON_TIME) || (!_ledState && elapsed >= OFF_TIME)) {
+    _ledState = !_ledState;
+    _led->setLed(_ledState);
+    _lastUpdateTime = currentTime;
+
+    //DEBUG_VERBOSE("Power-on pattern: LED " + String(_ledState ? "ON" : "OFF"));
   }
 }
 
 // キャリブレーション中表示（速い点滅）
 void SingleLedDisplay::displayCalibrating()
 {
-  const unsigned long BLINK_TIME = 100;  // 0.1秒間隔で点滅
+  
+  const unsigned long BLINK_ON_TIME = 200;    // 0.2秒オン
+  const unsigned long BLINK_OFF_TIME = 200;   // 0.2秒オフ
+  const int PATTERN_LENGTH = 3;               // オン→オフ→ノーマアルモードへ
 
   unsigned long currentTime = millis();
   unsigned long elapsed = currentTime - _lastUpdateTime;
+  unsigned long stepTime;
 
-  if (elapsed >= BLINK_TIME) {
-    _ledState = !_ledState;
-    _led->setLed(_ledState);
+  // ステップによって時間を変える
+  if (_patternStep % 2 == 0 && _patternStep < 1) {
+    stepTime = BLINK_ON_TIME;  // オン時間
+    if (!_ledState) {
+      _ledState = true;
+      _led->setLed(true);
+      DEBUG_VERBOSE("Calibrating pattern: LED ON (step " + String(_patternStep) + ")");
+    }
+  } else if (_patternStep < 1) {
+    stepTime = BLINK_OFF_TIME; // オフ時間
+    if (_ledState) {
+      _ledState = false;
+      _led->setLed(false);
+      DEBUG_VERBOSE("Calibrating pattern: LED OFF (step " + String(_patternStep) + ")");
+    }
+  } else {
+    setMode(SingleLedDisplay::NORMAL_OPERATION);
+    return;
+  }
+
+  if (elapsed >= stepTime) {
+    _patternStep = (_patternStep + 1) % PATTERN_LENGTH;
     _lastUpdateTime = currentTime;
-
-    DEBUG_VERBOSE("Calibrating pattern: LED " + String(_ledState ? "ON" : "OFF"));
   }
 }
 

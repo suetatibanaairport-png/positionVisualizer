@@ -49,11 +49,14 @@ private:
   // 状態変数
   bool _isCalibrating;
   int _minValue;
+  int _midValue;
   int _maxValue;
   unsigned long _calibStartTime;
   int _lastRawValue;
   int _smoothedValue;
   int _calibratedValue;
+  int _lastCalibValue;
+  unsigned long _lastSerialPrintTime;
 
   // コールバック関数
   void onCalibButtonPressed();
@@ -67,7 +70,7 @@ private:
   // センサー値を取得
   int getLeverValue();
   int getRawValue();
-  void getCalibrationInfo(int& minVal, int& maxVal, bool& isCalibrated);
+  void getCalibrationInfo(int& minVal, int& midVal, int& maxVal, bool& isCalibrated);
 };
 
 #endif // LEVER_CONTROLLER_H
