@@ -15,6 +15,7 @@
 struct CalibrationData
 {
   int minValue;      // キャリブレーション最小値
+  int midValue;      // キャリブレーション中間値
   int maxValue;      // キャリブレーション最大値
   bool isCalibrated; // キャリブレーション完了フラグ
   uint16_t checksum; // データ検証用チェックサム
@@ -30,10 +31,10 @@ public:
   void begin();
 
   // キャリブレーション値の保存
-  bool saveCalibration(int minValue, int maxValue, bool isCalibrated);
+  bool saveCalibration();
 
   // 保存されたキャリブレーション値の読み込み
-  bool loadCalibration(int &minValue, int &maxValue, bool &isCalibrated);
+  bool loadCalibration(int &minValue, int &midValue, int &maxValue, bool &isCalibrated);
 
   // 値の正規化（0-100）
   int mapTo0_100(int rawValue);
@@ -43,6 +44,24 @@ public:
 
   // キャリブレーション状態のリセット
   void resetCalibration();
+
+  // キャリブレーション最小値のセット
+  void setCalibMinValue(int minValue);
+
+  // キャリブレーション中間値のセット
+  void setCalibMidValue(int midValue);
+
+  // キャリブレーション最大値のセット
+  void setCalibMaxValue(int maxValue);
+
+  // キャリブレーション最小値の取得
+  int getCalibMinValue();
+
+  // キャリブレーション中間値の取得
+  int getCalibMidValue();
+
+  // キャリブレーション最大値の取得
+  int getCalibMaxValue();
 
 private:
   CalibrationData _calibData;
