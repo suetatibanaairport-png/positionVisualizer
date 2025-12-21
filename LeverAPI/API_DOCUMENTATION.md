@@ -318,7 +318,9 @@ POST /api/simulation/toggle
 ```json
 {
   "status": "success",
-  "simulation_mode": true
+  "data": {
+    "simulation_mode": true
+  }
 }
 ```
 
@@ -331,7 +333,119 @@ GET /api/simulation/status
 **レスポンス例**:
 ```json
 {
-  "simulation_mode": true
+  "status": "success",
+  "data": {
+    "simulation_mode": true,
+    "device_count": 3
+  }
+}
+```
+
+#### 3.3 シミュレーション設定の取得
+
+```
+GET /api/simulation/config
+```
+
+**レスポンス例**:
+```json
+{
+  "status": "success",
+  "data": {
+    "device_count": 3
+  }
+}
+```
+
+#### 3.4 シミュレーション設定の変更
+
+```
+POST /api/simulation/config
+```
+
+**リクエスト本文**:
+```json
+{
+  "device_count": 6
+}
+```
+
+**レスポンス例**:
+```json
+{
+  "status": "success",
+  "data": {
+    "device_count": 6
+  }
+}
+```
+
+#### 3.5 シミュレーションデバイスの追加
+
+```
+POST /api/simulation/devices/add
+```
+
+**レスポンス例**:
+```json
+{
+  "status": "success",
+  "data": {
+    "added_device_id": "sim_4",
+    "simulation_devices": [
+      {"id": "sim_1", "name": "シミュレーション 1", "ip": "127.0.0.1"},
+      {"id": "sim_2", "name": "シミュレーション 2", "ip": "127.0.0.2"},
+      {"id": "sim_3", "name": "シミュレーション 3", "ip": "127.0.0.3"},
+      {"id": "sim_4", "name": "シミュレーション 4", "ip": "127.0.0.4"}
+    ]
+  }
+}
+```
+
+#### 3.6 シミュレーションデバイスの削除
+
+```
+POST /api/simulation/devices/remove
+```
+
+**リクエスト本文（オプション）**:
+```json
+{
+  "device_id": "sim_2"
+}
+```
+
+**レスポンス例**:
+```json
+{
+  "status": "success",
+  "data": {
+    "removed_device_id": "sim_2",
+    "remaining_devices": [
+      {"id": "sim_1", "name": "シミュレーション 1", "ip": "127.0.0.1"},
+      {"id": "sim_3", "name": "シミュレーション 3", "ip": "127.0.0.3"}
+    ]
+  }
+}
+```
+
+#### 3.7 シミュレーションデバイス一覧の取得
+
+```
+GET /api/simulation/devices
+```
+
+**レスポンス例**:
+```json
+{
+  "status": "success",
+  "data": {
+    "devices": [
+      {"id": "sim_1", "name": "シミュレーション 1", "ip": "127.0.0.1"},
+      {"id": "sim_3", "name": "シミュレーション 3", "ip": "127.0.0.3"}
+    ],
+    "count": 2
+  }
 }
 ```
 
@@ -437,7 +551,12 @@ socket.emit('subscribe', { device_id: 'lever_001' });
 ### 2. シミュレーションモード
 
 テスト環境では、シミュレーションモードを使用して実際のデバイスなしでAPIの動作をテストできます。
-シミュレーションモードではランダムなデバイス値が生成されます。
+シミュレーションモードでは以下の機能が提供されます：
+
+- **動的なデバイス管理**: デバイスの追加・削除が可能
+- **デバイス数の設定**: `/api/simulation/config`エンドポイントでデバイス数を設定可能（1～20）
+- **ランダム値の生成**: シミュレーションデバイスは自動的に値を変動させる
+- **リアルデバイスと同様のAPI**: 実デバイスと同じインターフェースで操作可能
 
 ### 3. エラーハンドリング
 
