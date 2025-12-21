@@ -3,3 +3,4 @@ Windows/*
 !*.sh
 !*.bat
 !*.ps1
+*.zip

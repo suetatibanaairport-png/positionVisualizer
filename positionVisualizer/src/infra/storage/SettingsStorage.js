@@ -89,6 +89,28 @@
   };
 
   /**
+   * システム設定を保存
+   */
+  SettingsStorage.prototype.saveSystemSettings = function(systemSettings) {
+    const settings = this.load() || {};
+    settings.systemSettings = systemSettings;
+    return this.save(settings);
+  };
+
+  /**
+   * システム設定を読み込む
+   */
+  SettingsStorage.prototype.loadSystemSettings = function() {
+    const settings = this.load();
+    if (settings && settings.systemSettings) {
+      return settings.systemSettings;
+    }
+    return {
+      maxDevices: 6 // デフォルト値
+    };
+  };
+
+  /**
    * デバイス設定を読み込む
    */
   SettingsStorage.prototype.loadDeviceConfigs = function() {

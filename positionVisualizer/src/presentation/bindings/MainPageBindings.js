@@ -19,6 +19,8 @@
     this.overlayChannel = overlayChannel;
 
     this.deviceIdMap = new Map();
+    this.devicesList = []; // 検出順にデバイスIDを記録
+    this._maxDevicesAlertShown = false; // 上限警告表示フラグ
   }
 
   /**
@@ -27,33 +29,98 @@
   MainPageBindings.prototype._getDeviceIndex = function (deviceId) {
     if (!deviceId) return -1;
 
+    // 既に割り当て済みのデバイスIDの場合
     if (this.deviceIdMap.has(deviceId)) {
       return this.deviceIdMap.get(deviceId);
     }
 
-    const match = deviceId.match(/(\d+)$/);
-    if (match) {
-      const num = parseInt(match[1], 10);
-      if (num >= 1 && num <= 6) {
-        const index = num - 1;
-        this.deviceIdMap.set(deviceId, index);
-        return index;
-      }
-    }
+    // 設定から最大デバイス数を取得
+    const maxDevices = this.settingsService && this.settingsService.getMaxDevices
+      ? this.settingsService.getMaxDevices()
+      : 6; // デフォルト値
 
-    // Try to find by IP address or name
-    for (let i = 0; i < 6; i++) {
-      const ipEl = document.getElementById(`device${i + 1}-ip`);
-      const nameEl = document.getElementById(`device${i + 1}-name`);
-      const ip = ipEl ? ipEl.value.trim() : '';
-      const name = nameEl ? nameEl.value.trim() : '';
-      if (name && name.toLowerCase().includes(deviceId.toLowerCase())) {
-        this.deviceIdMap.set(deviceId, i);
-        return i;
+    // 新しいデバイスの場合
+    if (!this.devicesList.includes(deviceId)) {
+      // 上限チェック
+      if (this.devicesList.length >= maxDevices) {
+        // 上限を超えた場合は警告を表示
+        console.warn(`デバイス上限(${maxDevices}個)に達したため、${deviceId}は表示されません`);
+        this._showMaxDevicesAlert(deviceId, maxDevices);
+        return -1;
       }
+
+      // 新しいデバイスを追加
+      const newIndex = this.devicesList.length;
+      this.devicesList.push(deviceId);
+      this.deviceIdMap.set(deviceId, newIndex);
+      console.log(`新規デバイス登録: ${deviceId} → インデックス ${newIndex}`);
+      return newIndex;
     }
 
     return -1;
+  };
+
+  /**
+   * 上限超過アラートの表示
+   */
+  MainPageBindings.prototype._showMaxDevicesAlert = function (deviceId, maxDevices) {
+    // すでにアラートが表示されていれば何もしない
+    if (this._maxDevicesAlertShown) return;
+
+    // アラートメッセージを作成
+    const message = `警告: デバイス数が上限(${maxDevices}個)を超えました。\nデバイス「${deviceId}」は表示されません。`;
+    console.warn(message);
+
+    // アラートを表示
+    const alertDiv = document.createElement('div');
+    alertDiv.className = 'alert alert-warning';
+    alertDiv.style.position = 'fixed';
+    alertDiv.style.top = '10px';
+    alertDiv.style.left = '50%';
+    alertDiv.style.transform = 'translateX(-50%)';
+    alertDiv.style.zIndex = '1000';
+    alertDiv.style.padding = '10px 15px';
+    alertDiv.style.borderRadius = '4px';
+    alertDiv.style.backgroundColor = '#fff3cd';
+    alertDiv.style.color = '#856404';
+    alertDiv.style.border = '1px solid #ffeeba';
+    alertDiv.style.boxShadow = '0 0 10px rgba(0,0,0,0.1)';
+    alertDiv.style.maxWidth = '90%';
+    alertDiv.style.opacity = '1';
+    alertDiv.style.transition = 'opacity 0.5s';
+
+    alertDiv.innerHTML = `
+      <strong>警告:</strong> デバイス数が上限(${maxDevices}個)を超えました。
+      <br>デバイス「${deviceId}」は表示されません。
+      <button style="margin-left: 10px; background: none; border: none; color: #856404; cursor: pointer; font-weight: bold;">×</button>
+    `;
+
+    // bodyに追加
+    document.body.appendChild(alertDiv);
+
+    // 閉じるボタンの処理
+    const closeButton = alertDiv.querySelector('button');
+    if (closeButton) {
+      closeButton.addEventListener('click', () => {
+        alertDiv.style.opacity = '0';
+        setTimeout(() => alertDiv.remove(), 500);
+      });
+    }
+
+    // 同じセッション中に再度表示しないようフラグを立てる
+    this._maxDevicesAlertShown = true;
+
+    // 5秒後に自動的に消す
+    setTimeout(() => {
+      if (alertDiv.parentElement) {
+        alertDiv.style.opacity = '0';
+        setTimeout(() => {
+          if (alertDiv.parentElement) {
+            alertDiv.remove();
+          }
+        }, 500);
+      }
+    }, 5000);
   };
 
   /**
@@ -246,7 +313,6 @@
    */
   MainPageBindings.prototype._bindUIControls = function () {
     const vm = this.viewModel;
-    const self = this;
 
     // Bind device name inputs
     for (let i = 1; i <= 6; i++) {
@@ -379,6 +445,25 @@
     const logFile = document.getElementById('log-file');
     const playBtn = document.getElementById('play-log');
     const stopBtn = document.getElementById('stop-log');
+
+    // 設定UI用の要素
+    const maxDevicesInput = document.getElementById('max-devices');
+    if (maxDevicesInput && this.settingsService) {
+      // 初期値を設定
+      maxDevicesInput.value = this.settingsService.getMaxDevices();
+
+      // 変更イベントを処理
+      maxDevicesInput.addEventListener('change', () => {
+        const value = parseInt(maxDevicesInput.value, 10);
+        if (!isNaN(value) && value > 0) {
+          this.settingsService.setMaxDevices(value);
+          console.log(`最大デバイス数を${value}に設定しました`);
+        } else {
+          console.warn('有効な最大デバイス数を入力してください');
+          maxDevicesInput.value = this.settingsService.getMaxDevices();
+        }
+      });
+    }
 
     if (playBtn && logFile && this.replayService) {
       playBtn.addEventListener('click', () => {

@@ -1,14 +1,16 @@
 /**
  * SettingsService - UseCase Layer
- * 範囲・単位更新を管理するUseCase
+ * 設定管理を行うUseCase
  * Domain Layerのみに依存し、外部実装には依存しない
  */
 (function() {
   'use strict';
 
-  function SettingsService(valueRangeRepository) {
+  function SettingsService(valueRangeRepository, settingsStorage) {
     this.valueRangeRepository = valueRangeRepository;
+    this.settingsStorage = settingsStorage;
     this.subscribers = [];
+    this.systemSettings = this.settingsStorage ? this.settingsStorage.loadSystemSettings() : { maxDevices: 6 };
   }
 
   /**
@@ -72,6 +74,29 @@
         console.error('Error in subscriber callback:', e);
       }
     });
+  };
+
+  /**
+   * デバイス最大数を取得
+   */
+  SettingsService.prototype.getMaxDevices = function() {
+    return this.systemSettings.maxDevices;
+  };
+
+  /**
+   * デバイス最大数を設定
+   */
+  SettingsService.prototype.setMaxDevices = function(maxDevices) {
+    const value = parseInt(maxDevices, 10);
+    if (isNaN(value) || value < 1) return false;
+
+    this.systemSettings.maxDevices = value;
+
+    if (this.settingsStorage) {
+      this.settingsStorage.saveSystemSettings(this.systemSettings);
+    }
+
+    return true;
   };
 
   // Export
