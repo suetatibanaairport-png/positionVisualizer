@@ -43,8 +43,9 @@ app = Flask(__name__)
 CORS(app)  # クロスオリジンリクエストを許可
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')  # WebSocket初期化
 
-# シミュレーションモードフラグ
+# シミュレーションモード設定
 SIMULATION_MODE = False
+SIMULATION_DEVICE_COUNT = 3  # シミュレーションデバイスのデフォルト数
 
 # WebSocketリアルタイムデータ更新設定
 UPDATE_INTERVAL = 0.1  # 100ミリ秒ごとに更新（WebSocket通知用）
@@ -155,7 +156,7 @@ def get_all_values():
     
     # シミュレーションモードが有効な場合、シミュレーションデバイスの値を追加
     if SIMULATION_MODE:
-        sim_device_ids = [f"sim_{i}" for i in range(1, 4)]
+        sim_device_ids = [f"sim_{i}" for i in range(1, SIMULATION_DEVICE_COUNT + 1)]
         for sim_id in sim_device_ids:
             if sim_id in LAST_DEVICE_VALUES:
                 # デバイス情報を取得
@@ -220,7 +221,7 @@ def get_device_summary():
     
     # シミュレーションモードが有効な場合、シミュレーションデバイスの値を追加
     if SIMULATION_MODE:
-        sim_device_ids = [f"sim_{i}" for i in range(1, 4)]
+        sim_device_ids = [f"sim_{i}" for i in range(1, SIMULATION_DEVICE_COUNT + 1)]
         for sim_id in sim_device_ids:
             if sim_id in LAST_DEVICE_VALUES:
                 # デバイス情報を取得
@@ -364,7 +365,7 @@ def toggle_simulation_mode():
     
     # シミュレーションモードが有効になった場合、即座にデバイスを作成して通知
     if SIMULATION_MODE:
-        sim_device_ids = [f"sim_{i}" for i in range(1, 4)]  # 3つのシミュレーションデバイス
+        sim_device_ids = [f"sim_{i}" for i in range(1, SIMULATION_DEVICE_COUNT + 1)]
         for sim_id in sim_device_ids:
             is_new = create_or_update_sim_device(sim_id)
             if is_new:
@@ -376,7 +377,7 @@ def toggle_simulation_mode():
                 logger.info(f"シミュレーションデバイス {sim_id} を作成して通知しました")
     else:
         # シミュレーションモードが無効になった場合、シミュレーションデバイスを削除
-        sim_device_ids = [f"sim_{i}" for i in range(1, 4)]
+        sim_device_ids = [f"sim_{i}" for i in range(1, SIMULATION_DEVICE_COUNT + 1)]
         for sim_id in sim_device_ids:
             if sim_id in discovery.devices:
                 del discovery.devices[sim_id]
@@ -394,7 +395,177 @@ def toggle_simulation_mode():
 def get_simulation_status():
     """シミュレーションモードのステータスを取得"""
     return create_success_response({
-        "simulation_mode": SIMULATION_MODE
+        "simulation_mode": SIMULATION_MODE,
+        "device_count": SIMULATION_DEVICE_COUNT
+    })
+
+@app.route('/api/simulation/config', methods=['POST'])
+def configure_simulation():
+    """シミュレーションデバイスの個数を設定"""
+    global SIMULATION_DEVICE_COUNT
+
+    data = request.json
+    if not data or "device_count" not in data:
+        return create_error_response(400, "device_count is required")
+
+    count = data.get('device_count')
+    try:
+        count = int(count)
+    except (ValueError, TypeError):
+        return create_error_response(400, "device_count must be an integer")
+
+    # 1～20の範囲で制限
+    if count < 1 or count > 20:
+        return create_error_response(400, "device_count must be between 1 and 20")
+
+    SIMULATION_DEVICE_COUNT = count
+    logger.info(f"シミュレーションデバイス数を {SIMULATION_DEVICE_COUNT} に設定しました")
+
+    return create_success_response({
+        "device_count": SIMULATION_DEVICE_COUNT
+    })
+
+@app.route('/api/simulation/config', methods=['GET'])
+def get_simulation_config():
+    """シミュレーション設定を取得"""
+    return create_success_response({
+        "device_count": SIMULATION_DEVICE_COUNT
+    })
+
+@app.route('/api/simulation/devices/add', methods=['POST'])
+def add_sim_device():
+    """シミュレーションデバイスを1つ追加"""
+    if not SIMULATION_MODE:
+        return create_error_response(400, "Simulation mode is not enabled")
+
+    # シミュレーションデバイスの現在のIDを探す
+    sim_ids = []
+    for device_id in discovery.devices:
+        if device_id.startswith("sim_"):
+            sim_ids.append(device_id)
+
+    # 次のIDを決定
+    next_num = 1
+    if sim_ids:
+        # 既存のIDから番号を抽出して最大値を見つける
+        existing_nums = []
+        for sim_id in sim_ids:
+            try:
+                num = int(sim_id.split("_")[1])
+                existing_nums.append(num)
+            except (IndexError, ValueError):
+                continue
+
+        if existing_nums:
+            next_num = max(existing_nums) + 1
+
+    # 新しいデバイスを作成
+    new_device_id = f"sim_{next_num}"
+    is_new = create_or_update_sim_device(new_device_id)
+
+    if is_new:
+        # 初回作成時は個別通知
+        socketio.emit('device_update', {
+            'device_id': new_device_id,
+            'data': LAST_DEVICE_VALUES[new_device_id]
+        })
+        logger.info(f"新しいシミュレーションデバイス {new_device_id} を追加しました")
+
+    # 現在のシミュレーションデバイスリストを取得
+    sim_devices = []
+    for device_id in discovery.devices:
+        if device_id.startswith("sim_"):
+            sim_devices.append({
+                "id": device_id,
+                "name": discovery.devices[device_id].get("name", "Unknown"),
+                "ip": discovery.devices[device_id].get("ip", "")
+            })
+
+    return create_success_response({
+        "added_device_id": new_device_id,
+        "simulation_devices": sim_devices
+    })
+
+@app.route('/api/simulation/devices/remove', methods=['POST'])
+def remove_sim_device():
+    """シミュレーションデバイスを1つ削除"""
+    if not SIMULATION_MODE:
+        return create_error_response(400, "Simulation mode is not enabled")
+
+    data = request.json or {}
+    device_id = data.get('device_id')
+
+    # シミュレーションデバイスの現在のIDを探す
+    sim_ids = []
+    for did in discovery.devices:
+        if did.startswith("sim_"):
+            sim_ids.append(did)
+
+    if not sim_ids:
+        return create_error_response(404, "No simulation devices found")
+
+    # 削除するデバイスを決定
+    if device_id and device_id in sim_ids:
+        # 指定されたIDのデバイスを削除
+        target_device_id = device_id
+    else:
+        # 指定がなければ最も大きい番号のデバイスを削除
+        existing_nums = []
+        id_map = {}
+        for sim_id in sim_ids:
+            try:
+                num = int(sim_id.split("_")[1])
+                existing_nums.append(num)
+                id_map[num] = sim_id
+            except (IndexError, ValueError):
+                continue
+
+        if not existing_nums:
+            return create_error_response(500, "Failed to parse device IDs")
+
+        target_num = max(existing_nums)
+        target_device_id = id_map[target_num]
+
+    # デバイスを削除
+    if target_device_id in discovery.devices:
+        del discovery.devices[target_device_id]
+    if target_device_id in LAST_DEVICE_VALUES:
+        del LAST_DEVICE_VALUES[target_device_id]
+
+    # 切断通知を送信
+    socketio.emit('device_disconnected', {'device_id': target_device_id})
+    logger.info(f"シミュレーションデバイス {target_device_id} を削除しました")
+
+    # 残りのシミュレーションデバイスリストを取得
+    remaining_devices = []
+    for did in discovery.devices:
+        if did.startswith("sim_"):
+            remaining_devices.append({
+                "id": did,
+                "name": discovery.devices[did].get("name", "Unknown"),
+                "ip": discovery.devices[did].get("ip", "")
+            })
+
+    return create_success_response({
+        "removed_device_id": target_device_id,
+        "remaining_devices": remaining_devices
+    })
+
+@app.route('/api/simulation/devices', methods=['GET'])
+def list_sim_devices():
+    """シミュレーションデバイスの一覧を取得"""
+    sim_devices = []
+    for device_id in discovery.devices:
+        if device_id.startswith("sim_"):
+            sim_devices.append({
+                "id": device_id,
+                "name": discovery.devices[device_id].get("name", "Unknown"),
+                "ip": discovery.devices[device_id].get("ip", "")
+            })
+
+    return create_success_response({
+        "devices": sim_devices,
+        "count": len(sim_devices)
     })
 
 
@@ -818,7 +989,7 @@ def realtime_monitor():
             # シミュレーションモードの場合も処理
             if SIMULATION_MODE:
                 # シミュレーション用デバイスを確保（存在しなければ作成）
-                sim_device_ids = [f"sim_{i}" for i in range(1, 4)]  # 3つのシミュレーションデバイス
+                sim_device_ids = [f"sim_{i}" for i in range(1, SIMULATION_DEVICE_COUNT + 1)]  # 3つのシミュレーションデバイス
 
                 for sim_id in sim_device_ids:
                     # デバイスが存在しなければ作成
