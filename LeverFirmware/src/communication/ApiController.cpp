@@ -119,15 +119,17 @@ String ApiController::handleApiRoot()
 
   // キャリブレーション情報の取得
   int minValue = 0;
+  int midValue = 512;
   int maxValue = 1023;
   bool isCalibrated = false;
 
   if (_getCalibrationInfoCallback) {
-    _getCalibrationInfoCallback(minValue, maxValue, isCalibrated);
+    _getCalibrationInfoCallback(minValue, midValue, maxValue, isCalibrated);
   }
 
   data["calibrated"] = isCalibrated;
   data["calib_min"] = minValue;
+  data["calib_mid"] = midValue;
   data["calib_max"] = maxValue;
 
   // ステータス情報

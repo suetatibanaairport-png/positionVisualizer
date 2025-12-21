@@ -8,15 +8,18 @@
 // キャリブレーション設定
 const int VALID_RANGE_DIFF = 100; // 有効なキャリブレーション範囲の最小差
 const int DEFAULT_MIN = 0;        // デフォルト最小値
+const int DEFAULT_MID = 511;      // デフォルト中間値
 const int DEFAULT_MAX = 1023;     // デフォルト最大値
 const int MIN_VALUE = 0;          // マッピング後の最小値
-const int MAX_VALUE = 100;        // マッピング後の最大値
+const int MID_VALUE = 500;         // マッピング後の中間値
+const int MAX_VALUE = 1000;        // マッピング後の最大値
 
 // コンストラクタ
 Calibration::Calibration()
   : _dataLoaded(false) {
   // デフォルト値の設定
   _calibData.minValue = DEFAULT_MIN;
+  _calibData.midValue = DEFAULT_MID;
   _calibData.maxValue = DEFAULT_MAX;
   _calibData.isCalibrated = false;
   _calibData.checksum = 0;
@@ -41,9 +44,9 @@ void Calibration::begin()
   _storage->begin();
 
   // 保存されたキャリブレーション値を読み込み
-  int min, max;
+  int min, mid, max;
   bool calibrated;
-  if (loadCalibration(min, max, calibrated))
+  if (loadCalibration(min, mid, max, calibrated))
   {
     DEBUG_INFO("保存されたキャリブレーション値を読み込みました");
     DEBUG_INFO(String("Min: ") + min +
@@ -56,33 +59,68 @@ void Calibration::begin()
     DEBUG_INFO("デフォルト値を使用します");
     // デフォルト値を設定（保存はしない）
     _calibData.minValue = DEFAULT_MIN;
+    _calibData.midValue = DEFAULT_MID;
     _calibData.maxValue = DEFAULT_MAX;
     _calibData.isCalibrated = false;
   }
 }
 
+// キャリブレーション最小値のセット
+void Calibration::setCalibMinValue(int minValue)
+{
+  _calibData.minValue = minValue;
+}
+
+// キャリブレーション中間値のセット
+void Calibration::setCalibMidValue(int midValue)
+{
+  _calibData.midValue = midValue;
+}
+
+// キャリブレーション最大値のセット
+void Calibration::setCalibMaxValue(int maxValue)
+{
+  _calibData.maxValue = maxValue;
+}
+
+// キャリブレーション最小値の取得
+int Calibration::getCalibMinValue()
+{
+  return _calibData.minValue;
+}
+
+// キャリブレーション中間値の取得
+int Calibration::getCalibMidValue()
+{
+  return _calibData.midValue;
+}
+
+// キャリブレーション最大値の取得
+int Calibration::getCalibMaxValue()
+{
+  return _calibData.maxValue;
+}
+
 // キャリブレーション値の保存
-bool Calibration::saveCalibration(int minValue, int maxValue, bool isCalibrated)
+bool Calibration::saveCalibration()
 {
   // データの範囲チェック
-  if (!isValidRange(minValue, maxValue) && isCalibrated) {
+  if (!isValidRange(_calibData.minValue, _calibData.maxValue) && _calibData.isCalibrated) {
     DEBUG_WARNING("無効なキャリブレーション範囲です");
     return false;
   }
 
   // 構造体の更新
-  _calibData.minValue = minValue;
-  _calibData.maxValue = maxValue;
-  _calibData.isCalibrated = isCalibrated;
   _calibData.checksum = calculateChecksum(_calibData);
 
   // ストレージに保存
   if (_storage->writeData(&_calibData, sizeof(CalibrationData), 0)) {
     if (_storage->commit()) {
       DEBUG_INFO(String("キャリブレーション保存: ") +
-                "Min=" + minValue +
-                ", Max=" + maxValue +
-                ", IsCalibrated=" + (isCalibrated ? "Yes" : "No"));
+                "Min=" + _calibData.minValue +
+                ", Mid=" + _calibData.midValue +
+                ", Max=" + _calibData.maxValue +
+                ", IsCalibrated=" + (_calibData.isCalibrated ? "Yes" : "No"));
       _dataLoaded = true;
       return true;
     }
@@ -93,7 +131,7 @@ bool Calibration::saveCalibration(int minValue, int maxValue, bool isCalibrated)
 }
 
 // 保存されたキャリブレーション値の読み込み
-bool Calibration::loadCalibration(int &minValue, int &maxValue, bool &isCalibrated)
+bool Calibration::loadCalibration(int &minValue, int &midValue, int &maxValue, bool &isCalibrated)
 {
   CalibrationData loadedData;
 
@@ -103,6 +141,7 @@ bool Calibration::loadCalibration(int &minValue, int &maxValue, bool &isCalibrat
 
     // デフォルト値を返す
     minValue = DEFAULT_MIN;
+    midValue = DEFAULT_MID;
     maxValue = DEFAULT_MAX;
     isCalibrated = false;
     return false;
@@ -115,6 +154,7 @@ bool Calibration::loadCalibration(int &minValue, int &maxValue, bool &isCalibrat
 
     // デフォルト値を返す
     minValue = DEFAULT_MIN;
+    midValue = DEFAULT_MID;
     maxValue = DEFAULT_MAX;
     isCalibrated = false;
     return false;
@@ -126,6 +166,7 @@ bool Calibration::loadCalibration(int &minValue, int &maxValue, bool &isCalibrat
 
     // デフォルト値を返す
     minValue = DEFAULT_MIN;
+    midValue = DEFAULT_MID;
     maxValue = DEFAULT_MAX;
     isCalibrated = false;
     return false;
@@ -136,11 +177,13 @@ bool Calibration::loadCalibration(int &minValue, int &maxValue, bool &isCalibrat
   _dataLoaded = true;
 
   minValue = _calibData.minValue;
+  midValue = _calibData.midValue;
   maxValue = _calibData.maxValue;
   isCalibrated = _calibData.isCalibrated;
 
   DEBUG_INFO(String("キャリブレーション読み込み: ") +
              "Min=" + minValue +
+             ", Mid=" + midValue +
              ", Max=" + maxValue +
              ", IsCalibrated=" + (isCalibrated ? "Yes" : "No"));
   return true;
@@ -153,18 +196,26 @@ int Calibration::mapTo0_100(int rawValue)
 
   if (_calibData.isCalibrated)
   {
+    long num = 0;
+    long den = 500;
+    long mid = 500;
     // キャリブレーション済みの場合、calibMin-calibMaxの範囲を0-100に変換
-    long num = (long)(rawValue - _calibData.minValue) * (MAX_VALUE - MIN_VALUE);
-    long den = (long)(_calibData.maxValue - _calibData.minValue);
-
+    if (rawValue < _calibData.midValue) {
+      num = (long)(rawValue - _calibData.minValue) * (MID_VALUE - MIN_VALUE);
+      den = (long)(_calibData.midValue - _calibData.minValue);
+      mid = MIN_VALUE;
+    } else {
+      num = (long)(rawValue - _calibData.midValue) * (MAX_VALUE - MID_VALUE);
+      den = (long)(_calibData.maxValue - _calibData.midValue);
+      mid = MID_VALUE;
+    }
     // ゼロ除算防止
     if (den == 0)
     {
       return MIN_VALUE;
     }
 
-    // 四捨五入処理を含む計算
-    result = (num >= 0) ? (int)((num + den / 2) / den) : (int)((num - den / 2) / den);
+    result = (int)( num / den + mid );
   }
   else
   {
