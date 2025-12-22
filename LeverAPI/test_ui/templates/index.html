@@ -17,6 +17,95 @@
             margin-bottom: 20px;
             border-radius: 4px;
         }
+
+        /* シミュレーションパネルのスタイル */
+        .simulation-panel {
+            margin-top: 20px;
+        }
+
+        .simulation-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            background-color: #f5f5f5;
+            border-radius: 5px;
+        }
+
+        .status-badge {
+            padding: 3px 10px;
+            border-radius: 10px;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+
+        .status-offline {
+            background-color: #ff6b6b;
+            color: white;
+        }
+
+        .status-online {
+            background-color: #4CAF50;
+            color: white;
+        }
+
+        .device-management {
+            padding: 15px;
+            background-color: #f5f5f5;
+            border-radius: 5px;
+        }
+
+        .device-management h3 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            font-size: 1.1em;
+        }
+
+        .sim-device-list {
+            max-height: 200px;
+            overflow-y: auto;
+            margin-bottom: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 10px;
+            background-color: white;
+        }
+
+        .sim-device-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .sim-device-item:last-child {
+            border-bottom: none;
+        }
+
+        .button-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .warning {
+            background-color: #ff6b6b;
+        }
+
+        .warning:hover {
+            background-color: #ff5252;
+        }
+
+        #removeDeviceById {
+            flex: 2;
+        }
     </style>
 </head>
 <body>
@@ -59,6 +148,36 @@
             <div class="details-content">
                 <p class="placeholder">デバイスを選択してください</p>
                 <!-- デバイス詳細がここに動的に追加されます -->
+            </div>
+        </div>
+
+        <div id="simulationPanel" class="panel simulation-panel">
+            <h2>シミュレーションモード</h2>
+            <div class="simulation-controls">
+                <div class="control-group">
+                    <label for="simStatus">シミュレーションステータス:</label>
+                    <span id="simStatus" class="status-badge status-offline">無効</span>
+                    <button id="toggleSimulation" class="button primary">有効/無効の切り替え</button>
+                </div>
+
+                <div class="control-group">
+                    <label for="deviceCount">シミュレーションデバイス数:</label>
+                    <input type="number" id="deviceCount" min="1" max="20" value="3">
+                    <button id="updateDeviceCount" class="button secondary">更新</button>
+                </div>
+
+                <div class="device-management">
+                    <h3>デバイス管理</h3>
+                    <div class="sim-device-list" id="simDeviceList">
+                        <p class="placeholder">シミュレーションモードが無効です</p>
+                        <!-- シミュレーションデバイスのリストがここに表示されます -->
+                    </div>
+                    <div class="button-row">
+                        <button id="addDevice" class="button secondary">デバイスを追加</button>
+                        <button id="removeDevice" class="button warning">デバイスを削除</button>
+                        <button id="removeDeviceById" class="button warning">特定デバイスを削除</button>
+                    </div>
+                </div>
             </div>
         </div>
 

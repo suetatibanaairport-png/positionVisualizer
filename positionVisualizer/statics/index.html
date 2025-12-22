@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>positionVisualizer</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/overlay.css">
+    <link rel="preload" href="assets/icon.svg" as="image" type="image/svg+xml">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <script>
+      (function(d) {
+        var config = { kitId: 'kaz6zgt', scriptTimeout: 3000, async: true },
+        h=d.documentElement,t=setTimeout(function(){h.className=h.className.replace(/\bwf-loading\b/g,"")+" wf-inactive";},config.scriptTimeout),
+        tk=d.createElement("script"),f=false,s=d.getElementsByTagName("script")[0],a;h.className+=" wf-loading";
+        tk.src='https://use.typekit.net/'+config.kitId+'.js';tk.async=true;
+        tk.onload=tk.onreadystatechange=function(){a=this.readyState;if(f||a&&a!="complete"&&a!="loaded")return;f=true;clearTimeout(t);try{Typekit.load(config)}catch(e){}};
+        s.parentNode.insertBefore(tk,s)
+      })(document);
+    </script>
+    <style>
+      /* Fallback styles */
+      .container{
+        display:flex;
+        flex-wrap:wrap;
+        gap:20px;
+        align-items:flex-start;
+        justify-content:center;
+        padding:10px;
+        max-width:100%;
+        min-height:calc(100vh - 40px);
+        margin:0 auto;
+        box-sizing: border-box;
+      }
+      .controls{flex:0 1 calc(50% - 10px);min-width:300px;max-width:500px;height:480px;border:1px solid #334155;padding:20px;border-radius:16px}
+      .visualizer{flex:1 1 calc(50% - 10px);min-width:300px;max-width:740px;height:480px;border:1px solid #334155;padding:20px;border-radius:16px;min-height:400px;display:flex;flex-direction:column}
+      .range-settings-section{flex:0 1 calc(50% - 10px);min-width:300px;max-width:500px;border:1px solid #334155;padding:16px;border-radius:16px}
+      .log-sections{flex:1 1 calc(50% - 10px);min-width:300px;max-width:740px;border:1px solid #334155;padding:16px;border-radius:16px}
+      .meter-container{position:relative;width:100%;max-width:980px;margin:0 auto;aspect-ratio:16/9;flex:1}
+      #icons-container{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
+      button{cursor:pointer}
+
+      /* オーバーレイボタン用スタイル */
+      .visualizer-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+        width: 100%;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+      .visualizer-title {
+        margin: 0;
+        font-size: 20px;
+        font-weight: 600;
+        flex: 1;
+        min-width: 120px;
+      }
+      .overlay-button {
+        background-color: #334155;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        padding: 8px 14px;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.2s;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        white-space: nowrap;
+        line-height: 1.2;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 140px;
+      }
+      .overlay-button:hover {
+        background-color: #1e293b;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+      }
+
+      /* レスポンシブ対応 */
+      @media (max-width: 768px) {
+        .container {
+          padding: 8px;
+          gap: 12px;
+        }
+      }
+
+      @media (max-width: 500px) {
+        .visualizer-header {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+        .visualizer-title {
+          margin-bottom: 8px;
+        }
+        .overlay-button {
+          width: 100%;
+        }
+        .visualizer, .controls, .range-settings-section, .log-sections {
+          padding: 15px;
+        }
+      }
+    </style>
+    <script>
+      // キャッシュクリア用のビルドクエリ
+      window.__buildTs = Date.now();
+    </script>
+</head>
+<body>
+    <div class="container">
+        <div class="controls">
+            <h2>デバイス設定</h2>
+            <div class="device-inputs">
+                <div class="device-group">
+                    <label>デバイス1</label>
+                    <label class="icon-file-button" for="device1-icon">
+                        <input type="file" id="device1-icon" accept="image/*" class="icon-file-input">
+                        <span class="icon-button-text">画像を選択</span>
+                    </label>
+                </div>
+                <div class="device-group">
+                    <label>デバイス2</label>
+                    <label class="icon-file-button" for="device2-icon">
+                        <input type="file" id="device2-icon" accept="image/*" class="icon-file-input">
+                        <span class="icon-button-text">画像を選択</span>
+                    </label>
+                </div>
+                <div class="device-group">
+                    <label>デバイス3</label>
+                    <label class="icon-file-button" for="device3-icon">
+                        <input type="file" id="device3-icon" accept="image/*" class="icon-file-input">
+                        <span class="icon-button-text">画像を選択</span>
+                    </label>
+                </div>
+                <div class="device-group">
+                    <label>デバイス4</label>
+                    <label class="icon-file-button" for="device4-icon">
+                        <input type="file" id="device4-icon" accept="image/*" class="icon-file-input">
+                        <span class="icon-button-text">画像を選択</span>
+                    </label>
+                </div>
+                <div class="device-group">
+                    <label>デバイス5</label>
+                    <label class="icon-file-button" for="device5-icon">
+                        <input type="file" id="device5-icon" accept="image/*" class="icon-file-input">
+                        <span class="icon-button-text">画像を選択</span>
+                    </label>
+                </div>
+                <div class="device-group">
+                    <label>デバイス6</label>
+                    <label class="icon-file-button" for="device6-icon">
+                        <input type="file" id="device6-icon" accept="image/*" class="icon-file-input">
+                        <span class="icon-button-text">画像を選択</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <div class="visualizer">
+            <div class="visualizer-header">
+                <h2 class="visualizer-title">プレビュー</h2>
+                <div class="header-buttons">
+                    <button id="reset-devices" class="overlay-button reset-button" title="デバイスリストをリセット">
+                        レバー表示をリセット
+                    </button>
+                    <button id="open-overlay" class="overlay-button" title="オーバーレイウィンドウを開く">
+                        オーバーレイを開く
+                    </button>
+                </div>
+            </div>
+            <div class="meter-container" id="meter-container">
+                <div id="icons-container"></div>
+            </div>
+        </div>
+        <div class="range-settings-section">
+            <h3>値の範囲設定</h3>
+            <div class="range-grid">
+                <div class="device-group">
+                    <label>最小値</label>
+                    <input type="number" id="min-value" value="0" step="0.1">
+                </div>
+                <div class="device-group">
+                    <label>最大値</label>
+                    <input type="number" id="max-value" value="100" step="0.1">
+                </div>
+                <div class="device-group">
+                    <label>単位</label>
+                    <input type="text" id="value-unit" value="%" placeholder="例: %, °, kg">
+                </div>
+                <div class="device-group">
+                    <label>最大デバイス数</label>
+                    <input type="number" id="max-devices" value="6" min="1" max="20" step="1">
+                    <span class="input-description">表示するレバーデバイスの最大数</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="log-sections">
+            <div class="log-replay-section">
+                <label>ログ再生</label>
+                <input type="file" id="log-file" accept="application/json,.json">
+                <div class="log-replay-buttons">
+                    <button id="play-log">再生</button>
+                    <button id="stop-log">停止</button>
+                </div>
+            </div>
+            <div class="log-record-section">
+                <label>ログ記録</label>
+                <div class="log-record-status" id="log-record-status">停止中</div>
+                <div class="log-record-buttons">
+                    <button id="start-record">記録開始</button>
+                    <button id="stop-record">記録終了</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // グローバル設定
+        window.APP_CONFIG = {
+            webSocketUrl: 'ws://localhost:8123',
+            containerId: 'meter-container',
+            maxDevices: 6
+        };
+    </script>
+    <script src="app.js"></script>
+</body>
+</html>
+
+

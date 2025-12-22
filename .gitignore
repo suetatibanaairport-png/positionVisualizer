@@ -21,12 +21,5 @@ Thumbs.db
 *.swp
 *.swo
 
-# Build
-dist/
-build/
-
-# Architecture Documentation
-ARCHITECTURE.md
-
 __pycache__/
 node_modules/

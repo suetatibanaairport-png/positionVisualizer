@@ -6,10 +6,16 @@ console.log('テスト用UIが起動しました - このUIは本番環境では
 // アプリケーションの状態管理
 const appState = {
     devices: {},            // デバイス情報を保持
+    deviceValues: {},       // デバイスの値を保持（グローバルな状態として）
     selectedDeviceId: null, // 選択中のデバイスID
     chart: null,            // Chart.jsインスタンス
     socket: null,           // WebSocketコネクション
-    isTestMode: true        // テストモードフラグ
+    isTestMode: true,       // テストモードフラグ
+    simulation: {
+        isEnabled: false,   // シミュレーションモード状態
+        deviceCount: 3,     // シミュレーションデバイス数
+        devices: []         // シミュレーションデバイスリスト
+    }
 };
 
 // DOM要素
@@ -24,6 +30,16 @@ const elements = {
     renameForm: document.getElementById('renameForm'),
     deviceIdInput: document.getElementById('deviceId'),
     deviceNameInput: document.getElementById('deviceName'),
+
+    // シミュレーション関連の要素
+    simStatus: document.getElementById('simStatus'),
+    toggleSimulation: document.getElementById('toggleSimulation'),
+    deviceCount: document.getElementById('deviceCount'),
+    updateDeviceCount: document.getElementById('updateDeviceCount'),
+    simDeviceList: document.getElementById('simDeviceList'),
+    addDevice: document.getElementById('addDevice'),
+    removeDevice: document.getElementById('removeDevice'),
+    removeDeviceById: document.getElementById('removeDeviceById')
 };
 
 // 初期化
@@ -36,10 +52,27 @@ document.addEventListener('DOMContentLoaded', () => {
     testBanner.textContent = 'テスト用UI - 本番環境では使用しないでください';
     document.body.prepend(testBanner);
 
+    // アプリケーション状態を初期化
+    appState.devices = {};
+    appState.deviceValues = {};
+    appState.selectedDeviceId = null;
+    appState.chart = null;
+    appState.socket = null;
+    appState.isTestMode = true;
+    appState.simulation = {
+        isEnabled: false,
+        deviceCount: 3,
+        devices: []
+    };
+
+    // UIコンポーネントを初期化
     initChart();
     setupEventListeners();
+
+    // WebSocketとデータ取得を初期化
     initWebSocket();
     scanForDevices(); // 初回スキャン
+    getSimulationStatus(); // シミュレーションモードのステータスを取得
 });
 
 // イベントリスナーの設定
@@ -62,6 +95,27 @@ function setupEventListeners() {
     elements.renameForm.addEventListener('submit', (event) => {
         event.preventDefault();
         renameDevice();
+    });
+
+    // シミュレーションモード切り替えボタン
+    elements.toggleSimulation.addEventListener('click', toggleSimulationMode);
+
+    // デバイス数更新ボタン
+    elements.updateDeviceCount.addEventListener('click', updateSimulationDeviceCount);
+
+    // デバイス追加ボタン
+    elements.addDevice.addEventListener('click', addSimulationDevice);
+
+    // デバイス削除ボタン
+    elements.removeDevice.addEventListener('click', removeSimulationDevice);
+
+    // 特定のデバイスを削除ボタン
+    elements.removeDeviceById.addEventListener('click', () => {
+        // 削除するデバイスIDを入力するためのプロンプト
+        const deviceId = prompt('削除するデバイスIDを入力してください（例: sim_2）');
+        if (deviceId) {
+            removeSpecificSimulationDevice(deviceId);
+        }
     });
 }
 
@@ -288,6 +342,9 @@ async function renameDevice() {
 
 // 現在値表示の更新
 function renderCurrentValues(values) {
+    // 必ず最初にコンテナをクリア
+    elements.currentValues.innerHTML = '';
+
     const valueIds = Object.keys(values);
 
     if (valueIds.length === 0) {
@@ -295,17 +352,23 @@ function renderCurrentValues(values) {
         return;
     }
 
-    elements.currentValues.innerHTML = '';
-
     valueIds.forEach(deviceId => {
         const data = values[deviceId];
+        // 無効なデータをスキップ
+        if (!data) return;
+
         const card = document.createElement('div');
         card.className = 'value-card';
 
+        // 有効なデータかフォールバック値を確保
+        const name = data.name || deviceId;
+        const value = data.value !== undefined ? data.value : 'N/A';
+        const timestamp = data.timestamp || Date.now() / 1000;
+
         card.innerHTML = `
-            <h3>${data.name}</h3>
-            <div class="value-number">${data.value}</div>
-            <div class="value-timestamp">${formatTimestamp(data.timestamp)}</div>
+            <h3>${name}</h3>
+            <div class="value-number">${value}</div>
+            <div class="value-timestamp">${formatTimestamp(timestamp)}</div>
         `;
 
         elements.currentValues.appendChild(card);
@@ -360,13 +423,21 @@ function updateChart(values) {
 
     if (devices.length === 0) return;
 
-    appState.chart.data.labels = devices.map(device => device.name);
-    appState.chart.data.datasets[0].data = devices.map(device => device.value);
+    appState.chart.data.labels = devices.map(device => device.name || device.device_id || 'Unknown');
+    appState.chart.data.datasets[0].data = devices.map(device =>
+        device.value !== undefined ? device.value : 0
+    );
     appState.chart.update();
 }
 
 // WebSocketの初期化と接続
 function initWebSocket() {
+    // すでにソケットが存在する場合は切断して重複接続を避ける
+    if (appState.socket) {
+        appState.socket.disconnect();
+        appState.socket = null;
+    }
+
     // Socket.IOクライアントの作成
     appState.socket = io(`http://${window.location.hostname}:5001`);
 
@@ -400,11 +471,24 @@ function initWebSocket() {
     appState.socket.on('all_values', (values) => {
         console.log('すべてのデバイス値を受信:', values);
 
-        renderCurrentValues(values);
-        updateChart(values);
+        // グローバルなデバイス値の状態を完全にリセットして更新
+        appState.deviceValues = {}; // 一旦空にする
+
+        // 有効なデータだけを追加
+        if (values && typeof values === 'object') {
+            Object.keys(values).forEach(deviceId => {
+                if (values[deviceId]) {
+                    appState.deviceValues[deviceId] = values[deviceId];
+                }
+            });
+        }
+
+        // UIを更新
+        renderCurrentValues(appState.deviceValues);
+        updateChart(appState.deviceValues);
 
         // デバイス情報を更新（オンラインステータス）
-        Object.keys(values).forEach(deviceId => {
+        Object.keys(appState.deviceValues).forEach(deviceId => {
             if (appState.devices[deviceId]) {
                 appState.devices[deviceId].status = 'online';
             }
@@ -416,6 +500,13 @@ function initWebSocket() {
     // デバイス値の更新（リアルタイム）
     appState.socket.on('device_update', (update) => {
         console.log('デバイス更新:', update);
+
+        // 有効なデータのチェック
+        if (!update || !update.device_id || !update.data) {
+            console.error('無効なデバイス更新データ:', update);
+            return;
+        }
+
         const { device_id, data } = update;
 
         // デバイスが表示リストに存在しない場合は、デバイス情報を取得
@@ -423,12 +514,12 @@ function initWebSocket() {
             fetchDevices();
         }
 
-        // 値を更新
-        const values = {};
-        values[device_id] = data;
+        // グローバルなデバイス値の状態を更新
+        appState.deviceValues[device_id] = data;
 
-        renderCurrentValues(values);
-        updateChart(values);
+        // UIを更新（常に全体を再レンダリング）
+        renderCurrentValues(appState.deviceValues);
+        updateChart(appState.deviceValues);
 
         // 選択中デバイスの詳細を更新
         if (appState.selectedDeviceId === device_id) {
@@ -447,5 +538,337 @@ function formatTimestamp(timestamp) {
         minute: '2-digit',
         second: '2-digit',
         hour12: false
+    });
+}
+
+// -------- シミュレーション機能の実装 --------
+
+/**
+ * シミュレーションモードの状態を取得
+ */
+async function getSimulationStatus() {
+    try {
+        const response = await fetch('/api/simulation/status');
+        const data = await response.json();
+
+        if (data.status === 'success') {
+            appState.simulation.isEnabled = data.data.simulation_mode;
+            appState.simulation.deviceCount = data.data.device_count;
+
+            // UI更新
+            updateSimulationUI();
+        }
+
+        if (appState.simulation.isEnabled) {
+            // シミュレーションデバイスリストを取得
+            getSimulationDevices();
+        }
+
+    } catch (error) {
+        console.error('シミュレーションステータス取得エラー:', error);
+    }
+}
+
+/**
+ * シミュレーションデバイスリスト取得
+ */
+async function getSimulationDevices() {
+    try {
+        const response = await fetch('/api/simulation/devices');
+        const data = await response.json();
+
+        if (data.status === 'success') {
+            appState.simulation.devices = data.data.devices;
+
+            // シミュレーションデバイスリストのUI更新
+            updateSimDeviceListUI();
+        }
+
+    } catch (error) {
+        console.error('シミュレーションデバイス一覧取得エラー:', error);
+    }
+}
+
+/**
+ * シミュレーションモードの切り替え
+ */
+async function toggleSimulationMode() {
+    try {
+        elements.toggleSimulation.disabled = true;
+        elements.toggleSimulation.textContent = '処理中...';
+
+        const response = await fetch('/api/simulation/toggle', {
+            method: 'POST'
+        });
+        const data = await response.json();
+
+        if (data.status === 'success') {
+            appState.simulation.isEnabled = data.data.simulation_mode;
+
+            // UIを更新
+            updateSimulationUI();
+
+            // デバイスリストを更新
+            await fetchDevices();
+
+            if (appState.simulation.isEnabled) {
+                // シミュレーションデバイスリストを取得
+                getSimulationDevices();
+            }
+
+            console.log(`シミュレーションモードを${appState.simulation.isEnabled ? '有効' : '無効'}に切り替えました`);
+        } else {
+            alert(`エラー: ${data.message}`);
+        }
+    } catch (error) {
+        console.error('シミュレーションモード切り替えエラー:', error);
+        alert('シミュレーションモードの切り替えに失敗しました');
+    } finally {
+        elements.toggleSimulation.disabled = false;
+        elements.toggleSimulation.textContent = '有効/無効の切り替え';
+    }
+}
+
+/**
+ * シミュレーション設定の更新（デバイス数）
+ */
+async function updateSimulationDeviceCount() {
+    const count = parseInt(elements.deviceCount.value, 10);
+
+    if (isNaN(count) || count < 1 || count > 20) {
+        alert('デバイス数は1〜20の範囲で指定してください');
+        return;
+    }
+
+    try {
+        elements.updateDeviceCount.disabled = true;
+        elements.updateDeviceCount.textContent = '更新中...';
+
+        const response = await fetch('/api/simulation/config', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ device_count: count })
+        });
+        const data = await response.json();
+
+        if (data.status === 'success') {
+            appState.simulation.deviceCount = data.data.device_count;
+
+            // シミュレーションデバイスリストを更新
+            getSimulationDevices();
+
+            // デバイスリストを更新
+            await fetchDevices();
+
+            console.log(`シミュレーションデバイス数を${count}に更新しました`);
+        } else {
+            alert(`エラー: ${data.message}`);
+        }
+    } catch (error) {
+        console.error('シミュレーションデバイス数更新エラー:', error);
+        alert('シミュレーションデバイス数の更新に失敗しました');
+    } finally {
+        elements.updateDeviceCount.disabled = false;
+        elements.updateDeviceCount.textContent = '更新';
+    }
+}
+
+/**
+ * シミュレーションデバイス追加
+ */
+async function addSimulationDevice() {
+    if (!appState.simulation.isEnabled) {
+        alert('シミュレーションモードが無効です');
+        return;
+    }
+
+    try {
+        elements.addDevice.disabled = true;
+        elements.addDevice.textContent = '追加中...';
+
+        const response = await fetch('/api/simulation/devices/add', {
+            method: 'POST'
+        });
+        const data = await response.json();
+
+        if (data.status === 'success') {
+            appState.simulation.devices = data.data.simulation_devices;
+
+            // UIを更新
+            updateSimDeviceListUI();
+
+            // デバイスリストを更新
+            await fetchDevices();
+
+            console.log(`シミュレーションデバイスを追加しました: ${data.data.added_device_id}`);
+        } else {
+            alert(`エラー: ${data.message}`);
+        }
+    } catch (error) {
+        console.error('シミュレーションデバイス追加エラー:', error);
+        alert('シミュレーションデバイスの追加に失敗しました');
+    } finally {
+        elements.addDevice.disabled = false;
+        elements.addDevice.textContent = 'デバイスを追加';
+    }
+}
+
+/**
+ * シミュレーションデバイス削除（最新のデバイス）
+ */
+async function removeSimulationDevice() {
+    if (!appState.simulation.isEnabled) {
+        alert('シミュレーションモードが無効です');
+        return;
+    }
+
+    try {
+        elements.removeDevice.disabled = true;
+        elements.removeDevice.textContent = '削除中...';
+
+        const response = await fetch('/api/simulation/devices/remove', {
+            method: 'POST'
+        });
+        const data = await response.json();
+
+        if (data.status === 'success') {
+            appState.simulation.devices = data.data.remaining_devices;
+
+            // UIを更新
+            updateSimDeviceListUI();
+
+            // デバイスリストを更新
+            await fetchDevices();
+
+            console.log(`シミュレーションデバイスを削除しました: ${data.data.removed_device_id}`);
+        } else {
+            alert(`エラー: ${data.message}`);
+        }
+    } catch (error) {
+        console.error('シミュレーションデバイス削除エラー:', error);
+        alert('シミュレーションデバイスの削除に失敗しました');
+    } finally {
+        elements.removeDevice.disabled = false;
+        elements.removeDevice.textContent = 'デバイスを削除';
+    }
+}
+
+/**
+ * 特定のシミュレーションデバイス削除
+ */
+async function removeSpecificSimulationDevice(deviceId) {
+    if (!appState.simulation.isEnabled) {
+        alert('シミュレーションモードが無効です');
+        return;
+    }
+
+    if (!deviceId.startsWith('sim_')) {
+        alert('有効なシミュレーションデバイスIDを指定してください（例: sim_2）');
+        return;
+    }
+
+    try {
+        elements.removeDeviceById.disabled = true;
+        elements.removeDeviceById.textContent = '削除中...';
+
+        const response = await fetch('/api/simulation/devices/remove', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ device_id: deviceId })
+        });
+        const data = await response.json();
+
+        if (data.status === 'success') {
+            appState.simulation.devices = data.data.remaining_devices;
+
+            // UIを更新
+            updateSimDeviceListUI();
+
+            // デバイスリストを更新
+            await fetchDevices();
+
+            console.log(`シミュレーションデバイスを削除しました: ${data.data.removed_device_id}`);
+        } else {
+            alert(`エラー: ${data.message}`);
+        }
+    } catch (error) {
+        console.error('シミュレーションデバイス削除エラー:', error);
+        alert('シミュレーションデバイスの削除に失敗しました');
+    } finally {
+        elements.removeDeviceById.disabled = false;
+        elements.removeDeviceById.textContent = '特定デバイスを削除';
+    }
+}
+
+/**
+ * シミュレーションUIの更新
+ */
+function updateSimulationUI() {
+    // ステータスバッジ更新
+    if (appState.simulation.isEnabled) {
+        elements.simStatus.textContent = '有効';
+        elements.simStatus.className = 'status-badge status-online';
+
+        // デバイス管理UI有効化
+        elements.deviceCount.disabled = false;
+        elements.updateDeviceCount.disabled = false;
+        elements.addDevice.disabled = false;
+        elements.removeDevice.disabled = false;
+        elements.removeDeviceById.disabled = false;
+
+        // デバイス数の値を設定
+        elements.deviceCount.value = appState.simulation.deviceCount;
+
+        // デバイスリスト表示を更新
+        updateSimDeviceListUI();
+    } else {
+        elements.simStatus.textContent = '無効';
+        elements.simStatus.className = 'status-badge status-offline';
+
+        // デバイス管理UI無効化
+        elements.deviceCount.disabled = true;
+        elements.updateDeviceCount.disabled = true;
+        elements.addDevice.disabled = true;
+        elements.removeDevice.disabled = true;
+        elements.removeDeviceById.disabled = true;
+
+        // デバイスリスト表示をクリア
+        elements.simDeviceList.innerHTML = '<p class="placeholder">シミュレーションモードが無効です</p>';
+    }
+}
+
+/**
+ * シミュレーションデバイスリストUIの更新
+ */
+function updateSimDeviceListUI() {
+    if (!appState.simulation.isEnabled) {
+        elements.simDeviceList.innerHTML = '<p class="placeholder">シミュレーションモードが無効です</p>';
+        return;
+    }
+
+    if (appState.simulation.devices.length === 0) {
+        elements.simDeviceList.innerHTML = '<p class="placeholder">シミュレーションデバイスがありません</p>';
+        return;
+    }
+
+    elements.simDeviceList.innerHTML = '';
+
+    // デバイスリストを表示
+    appState.simulation.devices.forEach(device => {
+        const deviceItem = document.createElement('div');
+        deviceItem.className = 'sim-device-item';
+        deviceItem.innerHTML = `
+            <div class="device-info">
+                <span class="device-name">${device.name}</span>
+                <span class="device-id">(${device.id})</span>
+            </div>
+            <div class="device-ip">${device.ip}</div>
+        `;
+
+        elements.simDeviceList.appendChild(deviceItem);
     });
 }

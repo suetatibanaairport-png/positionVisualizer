@@ -438,6 +438,18 @@ def add_sim_device():
     if not SIMULATION_MODE:
         return create_error_response(400, "Simulation mode is not enabled")
 
+    # シミュレーションデバイス数の上限チェック
+    sim_count = sum(1 for device_id in discovery.devices if device_id.startswith("sim_"))
+    if sim_count >= SIMULATION_DEVICE_COUNT:
+        error_message = f"Device count limit ({SIMULATION_DEVICE_COUNT}) reached. Cannot add more devices."
+        # WebSocketでエラー通知
+        socketio.emit('error', {
+            'type': 'error',
+            'code': 400,
+            'message': f"device_count limit ({SIMULATION_DEVICE_COUNT}) reached"
+        })
+        return create_error_response(400, error_message)
+
     # シミュレーションデバイスの現在のIDを探す
     sim_ids = []
     for device_id in discovery.devices:

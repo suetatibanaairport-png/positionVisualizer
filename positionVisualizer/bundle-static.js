@@ -1,14 +1,19 @@
 // bundle-static.js
 // 静的ファイルをスキャンして、リソースバンドルを作成するスクリプト
 
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// ESM環境では__dirnameが使えないので代替手段を使用
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // ソースディレクトリ (HTML/CSS/JSがある場所)
-const sourceDir = __dirname;
+const sourceDir = path.join(__dirname, 'dist');
 
 // 出力ファイル - http-server.jsがインポートする
-const outputFile = path.join(__dirname, 'bundled-resources.js');
+const outputFile = path.join(__dirname, 'dist', 'bundled-resources.js');
 
 // 含めるファイル拡張子
 const extensions = [
@@ -153,7 +158,7 @@ function listResources() {
   return Object.keys(resources);
 }
 
-module.exports = {
+export {
   resources,
   getResource,
   getMimeType,

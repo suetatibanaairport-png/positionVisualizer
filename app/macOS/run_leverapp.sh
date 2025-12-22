@@ -11,24 +11,65 @@ export LC_ALL="en_US.UTF-8"
 APP_DIR=$(dirname "$0")
 cd "$APP_DIR"
 
-# ログディレクトリの作成は行わない
+# ログディレクトリの作成
+LOG_DIR="$APP_DIR/logs"
+mkdir -p "$LOG_DIR"
 
 # タイムスタンプを取得
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-# プロセス出力はコンソールに表示（ファイル保存しない）
-API_LOG="/dev/null"
-HTTP_LOG="/dev/null"
-BRIDGE_LOG="/dev/null"
+# ログファイルのパス設定
+API_LOG="$LOG_DIR/leverapi_${TIMESTAMP}.log"
+HTTP_LOG="$LOG_DIR/leverhttp_${TIMESTAMP}.log"
+BRIDGE_LOG="$LOG_DIR/leverbridge_${TIMESTAMP}.log"
+# リソース使用状況ログファイル
+# RESOURCE_LOG="$LOG_DIR/resources_${TIMESTAMP}.log"
+RESOURCE_LOG="/dev/null"  # リソースログを無効化
 
 # プロセスIDを保存する変数
 API_PID=""
 HTTP_PID=""
 BRIDGE_PID=""
+MONITOR_PID=""
+
+# リソース監視関数
+monitor_resources() {
+  echo "タイムスタンプ, プロセス, PID, CPU(%), メモリ(%)" > "$RESOURCE_LOG"
+
+  while true; do
+    # 現在の日時を取得
+    CURRENT_TIME=$(date +"%Y-%m-%d %H:%M:%S")
+
+    # 各プロセスのリソース使用状況を取得して記録
+    if [ -n "$API_PID" ] && ps -p $API_PID > /dev/null; then
+      PS_DATA=$(ps -p $API_PID -o %cpu,%mem | tail -n 1)
+      echo "$CURRENT_TIME, LeverAPI, $API_PID, $PS_DATA" >> "$RESOURCE_LOG"
+    fi
+
+    if [ -n "$HTTP_PID" ] && ps -p $HTTP_PID > /dev/null; then
+      PS_DATA=$(ps -p $HTTP_PID -o %cpu,%mem | tail -n 1)
+      echo "$CURRENT_TIME, LeverHTTP, $HTTP_PID, $PS_DATA" >> "$RESOURCE_LOG"
+    fi
+
+    if [ -n "$BRIDGE_PID" ] && ps -p $BRIDGE_PID > /dev/null; then
+      PS_DATA=$(ps -p $BRIDGE_PID -o %cpu,%mem | tail -n 1)
+      echo "$CURRENT_TIME, LeverBridge, $BRIDGE_PID, $PS_DATA" >> "$RESOURCE_LOG"
+    fi
+
+    # 5秒待機してから次の測定
+    sleep 5
+  done
+}
 
 # 終了時の処理
 cleanup() {
   echo ""
   echo "=== アプリケーションを終了しています ==="
+
+  # リソース監視の終了
+  if [ -n "$MONITOR_PID" ]; then
+    echo "リソース監視を終了中... (PID: $MONITOR_PID)"
+    kill $MONITOR_PID 2>/dev/null
+  fi
 
   # LeverAPIの終了
   if [ -n "$API_PID" ]; then
@@ -49,6 +90,7 @@ cleanup() {
   fi
 
   echo "すべてのプロセスを終了しました"
+  echo "リソース使用状況ログ: $RESOURCE_LOG"
   exit 0
 }
 
@@ -93,6 +135,7 @@ chmod +x ./LeverBridge
 
 # 1. LeverAPI を起動
 echo "[1/3] LeverAPIを起動しています..."
+echo "ログ: $API_LOG"
 ./LeverAPI > "$API_LOG" 2>&1 &
 API_PID=$!
 
@@ -109,6 +152,7 @@ sleep 2
 
 # 2. LeverHTTP を起動
 echo "[2/3] LeverHTTPを起動しています..."
+echo "ログ: $HTTP_LOG"
 ./LeverHTTP > "$HTTP_LOG" 2>&1 &
 HTTP_PID=$!
 
@@ -125,6 +169,7 @@ sleep 1
 
 # 3. LeverBridge を起動
 echo "[3/3] LeverBridgeを起動しています..."
+echo "ログ: $BRIDGE_LOG"
 ./LeverBridge > "$BRIDGE_LOG" 2>&1 &
 BRIDGE_PID=$!
 
@@ -145,9 +190,21 @@ echo "アクセス:"
 echo "- HTTP: http://localhost:8000"
 echo "- WebSocket: ws://localhost:8123"
 echo ""
+echo "ログファイル:"
+echo "- LeverAPI: $API_LOG"
+echo "- LeverHTTP: $HTTP_LOG"
+echo "- LeverBridge: $BRIDGE_LOG"
+echo "- リソース監視: $RESOURCE_LOG (5秒ごとに更新)"
+echo ""
 echo "終了するには Ctrl+C を押してください"
 echo ""
 echo "ブラウザで自動的にアプリケーションを開いています..."
+
+# リソース監視を開始
+echo "リソース監視を開始します... (5秒間隔で記録)"
+monitor_resources &
+MONITOR_PID=$!
+echo "リソース監視プロセス開始 (PID: $MONITOR_PID)"
 
 # 3秒待機してからブラウザを起動（サービスが完全に起動するまで待つ）
 sleep 3

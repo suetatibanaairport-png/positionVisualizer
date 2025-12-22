@@ -1,5 +1,27 @@
 [build]
-entrypoints = ["./integrated-server.js"]
+# サーバービルド設定
+[[build.targets]]
+name = "server"
+entrypoints = ["./http-server.js", "./bridge-server.js"]
 target = "bun"
 format = "executable"
 outdir = "../app/bin"
+
+# フロントエンドビルド設定
+[[build.targets]]
+name = "frontend"
+entrypoints = ["./src/index.js", "./src/overlay.js"]
+target = "browser"
+outdir = "./dist"
+minify = true
+sourcemap = true
+
+[dev]
+port = 3000
+open = true
+
+[install]
+exact = true
+
+[test]
+preload = "./test/setup.js"

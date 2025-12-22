@@ -6,6 +6,49 @@
 
 positionVisualizerは、ESP8266ベースのレバーデバイスから送信される値をリアルタイムで可視化するWebアプリケーションです。メインウィンドウとオーバーレイウィンドウ（クロマキー対応）の2つの表示モードを提供します。
 
+## 新アーキテクチャ（クリーンアーキテクチャ）
+
+このプロジェクトは最近、クリーンアーキテクチャパターンに基づいて再構築されました。新しいアーキテクチャは以下の層に分かれています：
+
+```
+positionVisualizer/
+├── src/
+│   ├── domain/           # ドメイン層：ビジネスロジックとエンティティ
+│   ├── application/      # アプリケーション層：ユースケースとサービス
+│   ├── infrastructure/   # インフラ層：外部サービスとの連携
+│   └── presentation/     # プレゼンテーション層：UI管理
+└── dist/                # ビルド済みアプリケーション
+```
+
+### 各レイヤーの役割
+
+#### ドメイン層 (Domain Layer)
+ビジネスのコアロジックと基本的なエンティティを含み、他の層に依存しない純粋な実装です。
+
+- `domain/entities/`: Device、DeviceValueなどのエンティティクラス
+- `domain/repositories/`: リポジトリのインターフェース定義
+- `domain/events/`: ドメインイベントの定義
+
+#### アプリケーション層 (Application Layer)
+ユースケースを実装し、ドメインオブジェクトの調整を行います。
+
+- `application/usecases/`: MonitorValues、RecordSession、ReplaySessionなどのユースケース
+- `application/services/`: DeviceServiceなどのサービスクラス
+
+#### インフラストラクチャ層 (Infrastructure Layer)
+外部システムとの接続を担当し、リポジトリの具体的な実装などを含みます。
+
+- `infrastructure/adapters/`: WebSocketClient、LocalStorageAdapterなどのアダプター
+- `infrastructure/repositories/`: リポジトリの実装
+- `infrastructure/services/`: EventBus、Loggerなどのインフラサービス
+
+#### プレゼンテーション層 (Presentation Layer)
+ユーザーインターフェースとのやり取りを担当します。
+
+- `presentation/viewmodels/`: MeterViewModelなどのビューモデル
+- `presentation/renderers/`: MeterRendererなどのレンダラー
+- `presentation/controllers/`: AppControllerなどのコントローラー
+
 ## 主な機能
 
 - **リアルタイム可視化**: レバーの位置をリアルタイムで表示
@@ -15,41 +58,60 @@ positionVisualizerは、ESP8266ベースのレバーデバイスから送信さ�
 - **オーバーレイ表示**: クロマキー対応の録画用ウィンドウ
 - **自動デバイス検出**: LeverAPIとの連携による自動デバイス検出
 
-## ディレクトリ構造
+## 主要クラスの概要
 
-```
-positionVisualizer/
-├── index.html              # メインウィンドウ
-├── overlay.html            # オーバーレイウィンドウ（クロマキー対応）
-├── css/
-│   └── style.css          # スタイルシート
-├── js/
-│   ├── app.js             # メインアプリケーション
-│   ├── overlay.js         # オーバーレイウィンドウ用スクリプト
-│   ├── core/              # コア機能
-│   │   ├── event.js       # イベント管理
-│   │   ├── model.js       # データモデル
-│   │   └── viewModel.js   # ビューモデル
-│   ├── views/             # ビューコンポーネント
-│   │   ├── iconRenderer.js    # アイコン描画
-│   │   └── meterRenderer.js   # メーター描画
-│   ├── bindings/          # データバインディング
-│   │   └── bindings.js
-│   └── services/          # サービス
-│       └── replay.js      # ログ再生機能
-├── http-server.js         # HTTPサーバー（静的ファイル配信）
-├── bridge-server.js       # WebSocketブリッジサーバー
-├── generate-log.js        # ログ生成ツール
-├── bundle-static.js       # 静的リソースバンドルツール
-├── http-server-bundled.js # バンドル済みHTTPサーバー
-├── integrated-server.js   # 統合サーバー
-├── assets/
-│   └── icon.svg           # デフォルトアイコン
-├── sw.js                   # Service Worker（PWA対応）
-└── package.json            # 依存パッケージ定義
+### DeviceService
+デバイスの登録・管理・値の設定などを担当するアプリケーションサービス。
+
+```javascript
+const deviceService = new DeviceService(deviceRepository, valueRepository);
+await deviceService.registerDevice('device-1', { name: 'センサー1' });
 ```
 
-## 起動方法
+### MeterViewModel
+メーター表示のためのビューモデル。状態管理と値の補間処理を担当。
+
+```javascript
+const viewModel = new MeterViewModel({ maxDevices: 6 });
+viewModel.setValue(0, 75, true); // デバイス0の値を75に設定
+```
+
+### MeterRenderer
+SVGを使用してメーターを描画するレンダラー。
+
+```javascript
+const renderer = new MeterRenderer(document.getElementById('meter-container'));
+renderer.update(viewModelState);
+```
+
+### AppController
+アプリケーション全体のコントローラー。各コンポーネントを調整し、ユーザーインターフェースとのやり取りを管理。
+
+```javascript
+const app = new AppController({ /* 依存関係 */ });
+await app.start();
+```
+
+## イベントの流れ
+
+1. WebSocketからデバイスメッセージを受信
+2. DeviceServiceがデバイスを登録・管理
+3. MonitorValuesUseCaseがデバイスの値をモニタリング
+4. MeterViewModelが値の状態を管理
+5. MeterRendererが値を視覚化
+6. ユーザー操作はAppControllerを通じてシステムに伝達
+
+## 改良点
+
+新アーキテクチャでは、以下の問題点を解決しています：
+
+1. **責任の分離**: 各クラスが単一の責任を持ち、密結合を回避
+2. **状態管理の一元化**: MeterViewModelによる一貫した状態管理
+3. **デバイスライフサイクル管理**: 接続・切断・タイムアウトの明確な処理
+4. **アイコン表示制御**: アイコンの表示・非表示の適切な管理
+5. **テスト容易性**: 依存性注入による単体テストの容易化
+
+## 起動方法（従来の方法）
 
 ### 自動起動（推奨）
 
@@ -115,18 +177,9 @@ node bridge-server.js
 ## 技術スタック
 
 - **フロントエンド**: Vanilla JavaScript
-- **通信**: WebSocket、Socket.IO
+- **通信**: WebSocket
 - **サーバー**: Node.js
 - **スタイリング**: CSS3
-
-## 依存パッケージ
-
-```json
-{
-  "ws": "^8.18.3",
-  "socket.io-client": "^4.7.5"
-}
-```
 
 ## API連携
 
@@ -134,46 +187,17 @@ node bridge-server.js
 
 positionVisualizerは、LeverAPIサーバーと以下の方法で連携します：
 
-1. **WebSocket接続**: Bridgeサーバー経由でSocket.IOを使用
-2. **デバイス検出**: `/api/devices` エンドポイントからデバイスリストを取得
+1. **WebSocket接続**: Bridgeサーバー経由でWebSocketを使用
+2. **デバイス検出**: WebSocket経由でデバイス情報を受信
 3. **値の取得**: WebSocket経由でリアルタイムに値を受信
 
 ### Bridgeサーバー
 
-`bridge-server.js`（以前は `tools/bridge-server.js`）は以下の役割を果たします：
+`bridge-server.js` は以下の役割を果たします：
 
-- LeverAPI（Socket.IO）とフロントエンド（WebSocket）のブリッジ
+- LeverAPIとフロントエンド（WebSocket）のブリッジ
 - デバイスIDをインデックスにマッピング（lever1 → 0, lever2 → 1, etc.）
 - 最新の値をキャッシュしてクライアントに配信
-
-## 開発
-
-### ファイル構成
-
-- **app.js**: メインアプリケーションロジック
-- **core/**: MVCパターンに基づくコア機能
-  - `model.js`: データモデル（デバイス情報、値など）
-  - `viewModel.js`: ビューモデル（UI状態管理）
-  - `event.js`: イベントシステム
-- **views/**: 描画コンポーネント
-  - `meterRenderer.js`: メーターの描画
-  - `iconRenderer.js`: アイコンの描画
-- **services/**: サービス層
-  - `replay.js`: ログ再生機能
-
-### カスタマイズ
-
-#### デバイス数の変更
-
-デフォルトでは最大6つのデバイスをサポートしています。変更する場合は：
-
-1. `index.html` のデバイス入力フィールドを変更
-2. `js/core/model.js` のデバイス配列サイズを変更
-3. `bridge-server.js` のデバイスインデックスマッピングを調整
-
-#### スタイルの変更
-
-`css/style.css` を編集してスタイルをカスタマイズできます。
 
 ## トラブルシューティング
 
@@ -193,4 +217,4 @@ positionVisualizerは、LeverAPIサーバーと以下の方法で連携します
 
 1. ログファイルの形式が正しいか確認（JSON形式）
 2. ブラウザのコンソールでエラーを確認
-3. `js/services/replay.js` のログ形式を確認
+3. ログ形式を確認
