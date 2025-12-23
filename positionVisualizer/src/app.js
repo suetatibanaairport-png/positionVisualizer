@@ -187,6 +187,9 @@ function setupUIEventHandlers(app) {
       window.open('?overlay', 'overlay_window', 'width=800,height=600,menubar=no,toolbar=no,location=no,status=no');
     });
   }
+
+  // アイコンアップロード処理のセットアップ
+  setupIconUploadHandlers(app);
 }
 
 /**
@@ -350,4 +353,101 @@ function showNotification(message, isOverlay = false) {
       notification.remove();
     }, 500);
   }, 3000);
+}
+
+/**
+ * アイコンアップロードのイベントハンドラをセットアップ
+ * @param {Object} app アプリケーションコントローラー
+ */
+function setupIconUploadHandlers(app) {
+  // アイコンアップロードの処理を実装
+  // すべてのアイコンファイル入力要素に対してイベントハンドラを設定
+  setTimeout(() => {
+    try {
+      const fileInputs = document.querySelectorAll('.icon-file-input');
+      console.log(`Found ${fileInputs.length} icon file inputs`);
+
+      fileInputs.forEach((input, index) => {
+        const deviceIndex = index + 1;
+        const deviceId = `lever${deviceIndex}`;
+        const iconButton = input.closest('.icon-file-button');
+        const buttonText = iconButton ? iconButton.querySelector('.icon-button-text') : null;
+
+        input.addEventListener('change', () => {
+          console.log(`File input change event for device ${deviceIndex}`);
+
+          const file = input.files && input.files[0];
+          if (!file) return;
+
+          // 画像ファイルかチェック
+          if (!file.type.startsWith('image/')) {
+            showErrorMessage('画像ファイルのみアップロード可能です');
+            return;
+          }
+
+          const reader = new FileReader();
+          reader.onload = async (event) => {
+            try {
+              const dataUrl = event.target.result;
+              if (!dataUrl) return;
+
+              // ファイルサイズをチェック
+              const size = dataUrl.length;
+              console.log(`File loaded for device ${deviceIndex}, size: ${(size/1024).toFixed(2)} KB`);
+
+              // 大きすぎるファイルをチェック (10MB以上)
+              if (size > 10 * 1024 * 1024) {
+                console.warn(`Very large image detected (${(size/1024/1024).toFixed(2)} MB). This may cause performance issues.`);
+                showErrorMessage('画像サイズが大きすぎます（10MB以上）。小さい画像を選択してください。');
+                return;
+              }
+
+              if (app) {
+                if (typeof app.setDeviceIcon === 'function') {
+                  // アイコンを設定
+                  await app.setDeviceIcon(deviceId, dataUrl);
+                  console.log(`Icon set successfully for device ${deviceId}`);
+
+                  // UIを更新
+                  if (iconButton) {
+                    iconButton.classList.add('has-icon');
+                  }
+
+                  if (buttonText) {
+                    buttonText.textContent = '✓ 登録済み';
+                  }
+
+                  showNotification(`デバイス${deviceIndex}のアイコンを設定しました`);
+                } else {
+                  console.error('setDeviceIcon method not found on app controller');
+                  showErrorMessage('アイコン設定機能が利用できません');
+                }
+              } else {
+                console.error('App controller not available');
+                showErrorMessage('アプリコントローラーが利用できません');
+              }
+            } catch (error) {
+              console.error(`Error uploading icon for device ${deviceId}:`, error);
+              showErrorMessage(`アイコンの設定中にエラーが発生しました: ${error.message || '不明なエラー'}`);
+            }
+          };
+
+          reader.onerror = () => {
+            showErrorMessage('ファイルの読み込み中にエラーが発生しました');
+          };
+
+          try {
+            reader.readAsDataURL(file);
+          } catch (error) {
+            console.error('Error reading file as data URL:', error);
+            showErrorMessage('ファイルの読み込みに失敗しました');
+          }
+        });
+
+        console.log(`Event listener attached to file input for device ${deviceIndex}`);
+      });
+    } catch (error) {
+      console.error('Error setting up icon upload handlers:', error);
+    }
+  }, 500); // DOM要素が完全に読み込まれるのを確実にするために少し遅延させる
 }

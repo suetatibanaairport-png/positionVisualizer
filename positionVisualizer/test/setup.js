@@ -3,58 +3,99 @@
  * テスト実行時に最初に読み込まれる
  */
 
-// DOMテスト用のセットアップ
-import { Window } from 'happy-dom';
-
-// グローバルなDOMオブジェクトの設定
-global.window = new Window();
-global.document = window.document;
-global.navigator = window.navigator;
-global.HTMLElement = window.HTMLElement;
-global.SVGElement = window.SVGElement;
-global.customElements = window.customElements;
-global.Element = window.Element;
-global.Node = window.Node;
-
 // その他のブラウザAPI
 global.requestAnimationFrame = (callback) => setTimeout(callback, 16);
 global.cancelAnimationFrame = (id) => clearTimeout(id);
 
-// DOMインターフェースのモックセットアップ
-document.createElementNS = function(namespaceURI, qualifiedName) {
-  // SVG関連のメソッドをモック
-  const element = document.createElement(qualifiedName);
-  element.setAttribute = function(name, value) {
-    this.attributes = this.attributes || {};
-    this.attributes[name] = value;
-  };
-
-  element.getAttribute = function(name) {
-    return (this.attributes && this.attributes[name]) || null;
-  };
-
-  element.setAttributeNS = function(namespace, name, value) {
-    const parts = name.split(':');
-    const localName = parts.length > 1 ? parts[1] : parts[0];
-    this.setAttribute(localName, value);
-  };
-
-  // SVG特有のメソッド
-  if (namespaceURI === 'http://www.w3.org/2000/svg') {
-    element.style = {};
-    element.getBBox = () => ({ x: 0, y: 0, width: 100, height: 100 });
+// DOMのモックを最小限に抑える
+global.document = {
+  createElement: () => ({
+    style: {},
+    setAttribute: () => {},
+    getAttribute: () => null,
+    appendChild: () => {}
+  }),
+  createElementNS: (ns, name) => ({
+    style: {},
+    setAttribute: () => {},
+    getAttribute: () => null,
+    setAttributeNS: () => {},
+    appendChild: () => {}
+  }),
+  getElementById: () => ({
+    style: {},
+    appendChild: () => {},
+    querySelectorAll: () => []
+  }),
+  body: {
+    appendChild: () => {},
+    classList: {
+      add: () => {}
+    }
   }
+};
 
-  return element;
+// ウィンドウのモック
+global.window = {
+  addEventListener: () => {},
+  removeEventListener: () => {},
+  location: {
+    search: ''
+  }
+};
+
+// Jestのモック関数の代わりとなる関数
+const createMockFn = () => {
+  const fn = (...args) => {
+    fn.mock.calls.push(args);
+    return fn.mock.returnValue;
+  };
+  fn.mock = {
+    calls: [],
+    instances: [],
+    returnValue: undefined,
+    implementation: null
+  };
+  fn.mockReturnValue = function(value) {
+    this.mock.returnValue = value;
+    return this;
+  };
+  fn.mockImplementation = function(implementation) {
+    this.mock.implementation = implementation;
+    return this;
+  };
+  fn.mockClear = function() {
+    this.mock.calls = [];
+    return this;
+  };
+  fn.mockReset = function() {
+    this.mockClear();
+    this.mock.returnValue = undefined;
+    this.mock.implementation = null;
+    return this;
+  };
+  fn.mockRestore = function() {
+    this.mockReset();
+    return this;
+  };
+  return fn;
+};
+
+// グローバルなjestオブジェクト
+global.jest = {
+  fn: createMockFn,
+  useFakeTimers: () => {},
+  useRealTimers: () => {},
+  advanceTimersByTime: () => {}
 };
 
 // コンソールのモック
 global.console = {
   ...console,
-  debug: jest.fn(),
-  info: jest.fn(),
-  warn: jest.fn(),
-  error: jest.fn(),
+  debug: createMockFn(),
+  info: createMockFn(),
+  warn: createMockFn(),
+  error: createMockFn(),
 };
 
 // APP_CONFIGのモック
@@ -124,3 +165,38 @@ class MockWebSocket {
 
 // WebSocketクラスをグローバルに定義
 global.WebSocket = MockWebSocket;
+
+// パフォーマンス関連のモック
+global.performance = {
+  ...performance,
+  now: () => Date.now()
+};
+
+// Bunテスト用のモック
+global.mock = (implementation) => {
+  const mockFn = (...args) => {
+    mockFn.mock.calls.push(args);
+    if (typeof implementation === 'function') {
+      return implementation(...args);
+    }
+    return mockFn.mock.returnValue;
+  };
+  mockFn.mock = {
+    calls: []
+  };
+  mockFn.mockReturnValue = (value) => {
+    mockFn.mock.returnValue = value;
+    return mockFn;
+  };
+  return mockFn;
+};
+
+global.spyOn = (object, method) => {
+  const originalMethod = object[method];
+  const mockFn = jest.fn();
+  object[method] = mockFn;
+  mockFn.mockRestore = () => {
+    object[method] = originalMethod;
+  };
+  return mockFn;
+};

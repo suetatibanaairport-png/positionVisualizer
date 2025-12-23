@@ -3,7 +3,7 @@
  * ValueCalculatorクラスのユニットテスト
  */
 
-import { describe, test, expect } from 'bun:test';
+import { describe, test, expect, it } from 'bun:test';
 import { ValueCalculator } from '../../../src/domain/services/ValueCalculator.js';
 
 describe('ValueCalculator', () => {
