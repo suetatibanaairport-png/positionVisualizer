@@ -78,6 +78,20 @@ export class ReplaySessionUseCase {
       this.currentIndex = 0;
       this.startTime = null;
 
+      // デバッグ: セッションの内容を確認
+      this.logger.debug('Session metadata:', {
+        deviceCount: sessionData.metadata?.deviceCount || 0,
+        entriesCount: sortedEntries.length,
+        deviceInfo: sessionData.metadata?.deviceInfo || {},
+        devices: new Set(sortedEntries.map(entry => entry.deviceId))
+      });
+
+      // 最初と最後のエントリをログに出力
+      if (sortedEntries.length > 0) {
+        this.logger.debug('First entry:', sortedEntries[0]);
+        this.logger.debug('Last entry:', sortedEntries[sortedEntries.length - 1]);
+      }
+
       this.logger.info(`Loaded session with ${sortedEntries.length} entries`);
 
       // イベント通知
@@ -99,15 +113,26 @@ export class ReplaySessionUseCase {
    * @returns {boolean} 成功したかどうか
    */
   play() {
-    if (!this.sessionData || this.sessionData.entries.length === 0) {
-      this.logger.warn('No session data loaded');
+    if (!this.sessionData || !this.sessionData.entries || this.sessionData.entries.length === 0) {
+      this.logger.warn('No session data loaded or entries is empty');
       return false;
     }
 
-    // すでに再生中の場合は何もしない
+    // すでに再生中の場合は現在の状態を返す
     if (this.isPlaying && !this.isPaused) {
+      this.logger.debug('Already playing, returning current state');
       return true;
     }
+
+    // 安全のために既存のタイマーをクリア
+    if (this.nextEntryTimeout) {
+      this.logger.debug('Clearing existing entry timeout');
+      clearTimeout(this.nextEntryTimeout);
+      this.nextEntryTimeout = null;
+    }
+
+    // 統計情報の定期更新を開始
+    this._startStatsUpdateInterval();
 
     // 一時停止中の場合は再開
     if (this.isPlaying && this.isPaused) {
@@ -181,9 +206,35 @@ export class ReplaySessionUseCase {
   }
 
   /**
-   * 再生停止
-   * @returns {boolean} 成功したかどうか
+   * 統計情報の定期更新を開始
+   * @private
    */
+  _startStatsUpdateInterval() {
+    // 既存のインターバルを停止
+    this._stopStatsUpdateInterval();
+
+    // 統計情報の更新インターバル（500ms）
+    this.statsUpdateInterval = setInterval(() => {
+      if (this.isPlaying) {
+        this._updateStatsDisplay();
+      }
+    }, 500);
+
+    // 初回の統計情報を表示
+    this._updateStatsDisplay();
+  }
+
+  /**
+   * 統計情報の定期更新を停止
+   * @private
+   */
+  _stopStatsUpdateInterval() {
+    if (this.statsUpdateInterval) {
+      clearInterval(this.statsUpdateInterval);
+      this.statsUpdateInterval = null;
+    }
+  }
+
   stop() {
     if (!this.isPlaying) {
       return false;
@@ -194,6 +245,9 @@ export class ReplaySessionUseCase {
       clearTimeout(this.nextEntryTimeout);
       this.nextEntryTimeout = null;
     }
+
+    // 統計情報の更新を停止
+    this._stopStatsUpdateInterval();
 
     const wasPlaying = this.isPlaying;
     this.isPlaying = false;
@@ -246,6 +300,56 @@ export class ReplaySessionUseCase {
     }
 
     return true;
+  }
+
+  /**
+   * 指定秒数だけ進む/戻る
+   * @param {number} secondsOffset 秒数（正=進む、負=戻る）
+   * @returns {boolean} 成功したかどうか
+   */
+  seekBySeconds(secondsOffset) {
+    if (!this.sessionData || !this.sessionData.entries.length) {
+      return false;
+    }
+
+    // 現在の時間（ms）
+    const currentTime = this._getAdjustedTimeForCurrentIndex();
+
+    // 目標時間（ms）- 秒をミリ秒に変換して加算
+    const targetTime = currentTime + (secondsOffset * 1000);
+
+    // セッション総時間
+    const totalDuration = this.getSessionDuration();
+
+    // 残り時間（ms）を計算
+    const remainingTime = totalDuration - currentTime;
+    const adjustedRemainingTime = remainingTime / this.options.replaySpeedMultiplier;
+
+    // 前進方向で残り時間が要求された秒数より少ない場合、完了処理を行う
+    if (secondsOffset > 0 && adjustedRemainingTime <= (secondsOffset * 1000)) {
+      this.logger.info(`Seeking beyond end of playback (${secondsOffset}s requested, only ${adjustedRemainingTime / 1000}s remaining)`);
+
+      // 最後のエントリにジャンプし、再生を停止
+      this.currentIndex = this.sessionData.entries.length - 1;
+      const finalEntry = this.sessionData.entries[this.currentIndex];
+
+      // 最後のエントリを再生
+      if (finalEntry) {
+        this._playEntry(finalEntry);
+      }
+
+      // 再生完了の処理を実行
+      this._handlePlaybackComplete();
+      return true;
+    }
+
+    // 0-1の範囲に収める（通常のケース）
+    const newPosition = Math.max(0, Math.min(1, targetTime / (totalDuration / this.options.replaySpeedMultiplier)));
+
+    this.logger.debug(`Seeking by ${secondsOffset} seconds, from position ${currentTime}ms to ${targetTime}ms (${newPosition.toFixed(2)} of playback)`);
+
+    // 位置へシーク
+    return this.seekToPosition(newPosition);
   }
 
   /**
@@ -458,31 +562,60 @@ export class ReplaySessionUseCase {
    * @private
    */
   _playEntry(entry) {
-    if (!entry || !entry.deviceId) return;
+    if (!entry || !entry.deviceId) {
+      this.logger.warn('Invalid entry for playback:', entry);
+      return;
+    }
 
     try {
+      // より詳細なデバッグ情報
+      this.logger.debug(`Playing entry for device ${entry.deviceId}:`, {
+        value: entry.value,
+        timestamp: entry.timestamp,
+        relativeTime: entry.relativeTime,
+        index: this.currentIndex,
+        isValueDefined: entry.value !== undefined && entry.value !== null
+      });
+
+      if (!entry.value) {
+        this.logger.warn(`Entry for device ${entry.deviceId} has no value`);
+      }
+
       // ライブモードの場合は現在時刻を使用
       const timestamp = this.options.liveMode ? Date.now() : entry.timestamp;
 
       // デバイス値を送信
       this._sendValueToDevice(entry.deviceId, entry.value, timestamp);
 
+      // deviceValueUpdatedイベントも発行してUIを強制的に更新（値の変更を反映させるため）
+      EventBus.emit('deviceValueUpdated', {
+        deviceId: entry.deviceId,
+        value: this._normalizeValue(entry.value)
+      });
+
       // イベント通知
-      EventBus.emit('entryPlayed', {
+      const entryInfo = {
         deviceId: entry.deviceId,
         value: entry.value,
         index: this.currentIndex,
         progress: this._calculateProgress(),
         timestamp
-      });
+      };
+      EventBus.emit('entryPlayed', entryInfo);
 
-      // 10エントリごとに進捗を通知
-      if (this.currentIndex % 10 === 0 || this.currentIndex === this.sessionData.entries.length - 1) {
+      // デバッグ表示用: 再生中の値を小さく表示
+      this._showDebugValues(entry.deviceId, this._normalizeValue(entry.value), this.currentIndex);
+
+      // 進捗通知（頻度を上げる）
+      if (this.currentIndex % 5 === 0 || this.currentIndex === this.sessionData.entries.length - 1) {
+        const progress = this._calculateProgress();
+        this.logger.debug(`Replay progress: ${(progress * 100).toFixed(1)}%, entry ${this.currentIndex}/${this.sessionData.entries.length}`);
+
         EventBus.emit('playbackProgress', {
           sessionId: this.currentSessionId,
           currentIndex: this.currentIndex,
           totalEntries: this.sessionData.entries.length,
-          progress: this._calculateProgress()
+          progress: progress
         });
       }
     } catch (error) {
@@ -498,16 +631,55 @@ export class ReplaySessionUseCase {
    * @private
    */
   _sendValueToDevice(deviceId, value, timestamp) {
-    // 値を正規化
-    const normalizedValue = this._normalizeValue(value);
+    if (!deviceId) {
+      this.logger.error('Cannot send value: deviceId is undefined');
+      return;
+    }
 
-    // 値リポジトリに保存
-    this.valueRepository.saveValue(deviceId, {
-      ...normalizedValue,
-      timestamp
-    }).catch(error => {
-      this.logger.error(`Error sending value to device ${deviceId}:`, error);
+    // デバッグ: 入力値の確認
+    this.logger.debug(`Raw input value for device ${deviceId}:`, {
+      value,
+      valueType: typeof value,
+      isNull: value === null,
+      isUndefined: value === undefined,
+      hasProperties: value && typeof value === 'object' ? Object.keys(value) : 'N/A'
     });
+
+    try {
+      // 値を正規化
+      const normalizedValue = this._normalizeValue(value);
+
+      this.logger.debug(`Sending normalized value to device ${deviceId}:`, {
+        ...normalizedValue,
+        timestamp
+      });
+
+      // 値リポジトリに保存
+      if (this.valueRepository && typeof this.valueRepository.saveValue === 'function') {
+        this.valueRepository.saveValue(deviceId, {
+          ...normalizedValue,
+          timestamp
+        }).then(() => {
+          this.logger.debug(`Successfully saved value for device ${deviceId}`);
+        }).catch(error => {
+          this.logger.error(`Error sending value to device ${deviceId}:`, error);
+        });
+      } else {
+        this.logger.error(`ValueRepository is not available or saveValue is not a function`);
+      }
+    } catch (error) {
+      this.logger.error(`Error processing value for device ${deviceId}:`, error);
+    }
+
+    // デバッグ: ValueRepositoryに現在の値が保存されているかを確認
+    setTimeout(async () => {
+      try {
+        const currentValue = await this.valueRepository.getCurrentValue(deviceId);
+        this.logger.debug(`Current value for device ${deviceId} after save:`, currentValue);
+      } catch (error) {
+        this.logger.error(`Error checking current value for device ${deviceId}:`, error);
+      }
+    }, 100);
   }
 
   /**
@@ -517,37 +689,95 @@ export class ReplaySessionUseCase {
    * @private
    */
   _normalizeValue(value) {
-    if (!value) return { rawValue: null, normalizedValue: null };
+    if (!value) {
+      this.logger.warn('Normalizing null/undefined value');
+      return { rawValue: null, normalizedValue: null };
+    }
+
+    this.logger.debug('Normalizing value:', value);
+
+    let rawValue = null;
+    let normalizedValue = null;
 
     // すでに正規化された形式の場合
     if (value.rawValue !== undefined || value.normalizedValue !== undefined) {
-      return {
-        rawValue: value.rawValue !== undefined ? value.rawValue : null,
-        normalizedValue: value.normalizedValue !== undefined ? value.normalizedValue : null
-      };
+      rawValue = value.rawValue !== undefined ? value.rawValue : null;
+      normalizedValue = value.normalizedValue !== undefined ? value.normalizedValue : null;
     }
-
     // raw/normalizedキーを持つ場合
-    if (value.raw !== undefined || value.normalized !== undefined) {
-      return {
-        rawValue: value.raw !== undefined ? value.raw : null,
-        normalizedValue: value.normalized !== undefined ? value.normalized : null
-      };
+    else if (value.raw !== undefined || value.normalized !== undefined) {
+      rawValue = value.raw !== undefined ? value.raw : null;
+      normalizedValue = value.normalized !== undefined ? value.normalized : null;
     }
-
     // 数値の場合
-    if (typeof value === 'number') {
-      return {
-        rawValue: value,
-        normalizedValue: value
-      };
+    else if (typeof value === 'number') {
+      rawValue = value;
+      normalizedValue = value;
+    }
+    // その他のケース（オブジェクトの場合はプロパティを展開）
+    else if (typeof value === 'object') {
+      rawValue = null;
+      normalizedValue = null;
+      // 他のプロパティがあれば保持
+      Object.keys(value).forEach(key => {
+        if (key !== 'rawValue' && key !== 'normalizedValue' && key !== 'raw' && key !== 'normalized') {
+          this[key] = value[key];
+        }
+      });
     }
 
-    // その他の場合
+    // 値が整数/数値に変換可能かチェック
+    if (rawValue !== null && typeof rawValue === 'string') {
+      const numValue = Number(rawValue);
+      if (!isNaN(numValue)) {
+        rawValue = numValue;
+      }
+    }
+
+    if (normalizedValue !== null && typeof normalizedValue === 'string') {
+      const numValue = Number(normalizedValue);
+      if (!isNaN(numValue)) {
+        normalizedValue = numValue;
+      }
+    }
+
+    // 正規化された値がなくても生値があれば正規化
+    if (normalizedValue === null && rawValue !== null) {
+      try {
+        normalizedValue = Number(rawValue);
+      } catch (e) {
+        this.logger.warn('Failed to convert raw value to number:', e);
+      }
+    }
+
+    // どちらの値も取得できなかった場合（0も有効な値として扱う）
+    if (normalizedValue === null && rawValue === null && typeof value === 'object') {
+      // オブジェクト内の他のプロパティを探す
+      if (value.value !== undefined) {
+        normalizedValue = Number(value.value);
+        rawValue = Number(value.value);
+      } else if (value.calibrated_value !== undefined) {
+        normalizedValue = Number(value.calibrated_value);
+        rawValue = Number(value.calibrated_value);
+      } else if (value.smoothed !== undefined) {
+        normalizedValue = Number(value.smoothed);
+        rawValue = Number(value.smoothed);
+      }
+    }
+
+    // それでも取得できなかった場合は0を使用（動きを見せるため）
+    if (normalizedValue === null && rawValue === null) {
+      this.logger.warn('Could not extract any value from:', value);
+      // 最低でもログに何かを表示するために0を使用
+      normalizedValue = 0;
+      rawValue = 0;
+    }
+
+    this.logger.debug('Normalized to:', { rawValue, normalizedValue });
+
     return {
-      rawValue: null,
-      normalizedValue: null,
-      ...value
+      rawValue,
+      normalizedValue
     };
   }
 
@@ -587,6 +817,190 @@ export class ReplaySessionUseCase {
   }
 
   /**
+   * 現在ロードされているセッションデータを取得
+   * @returns {Object|null} セッションデータまたはnull
+   */
+  getSessionData() {
+    return this.sessionData;
+  }
+
+  /**
+   * 再生統計情報を表示するためのUIを更新
+   * @param {Object} stats 統計情報
+   * @private
+   */
+  _updateStatsDisplay(stats = null) {
+    // 強制的にステータスを取得
+    if (!stats) {
+      stats = this.getPlaybackStatus();
+    }
+
+    // 既存のステータス表示を取得または作成
+    let statsDisplay = document.getElementById('replay-stats-display');
+    if (!statsDisplay) {
+      statsDisplay = document.createElement('div');
+      statsDisplay.id = 'replay-stats-display';
+      statsDisplay.style.position = 'fixed';
+      statsDisplay.style.top = '10px';
+      statsDisplay.style.right = '10px';
+      statsDisplay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+      statsDisplay.style.color = 'white';
+      statsDisplay.style.padding = '8px';
+      statsDisplay.style.borderRadius = '5px';
+      statsDisplay.style.fontSize = '12px';
+      statsDisplay.style.fontFamily = 'monospace';
+      statsDisplay.style.zIndex = '9999';
+      document.body.appendChild(statsDisplay);
+
+      // ヘッダーを追加
+      const header = document.createElement('div');
+      header.style.fontWeight = 'bold';
+      header.style.marginBottom = '5px';
+      header.textContent = 'ログ再生統計';
+      statsDisplay.appendChild(header);
+
+      // 閉じるボタン
+      const closeButton = document.createElement('button');
+      closeButton.textContent = '×';
+      closeButton.style.position = 'absolute';
+      closeButton.style.top = '2px';
+      closeButton.style.right = '5px';
+      closeButton.style.backgroundColor = 'transparent';
+      closeButton.style.border = 'none';
+      closeButton.style.color = 'white';
+      closeButton.style.fontSize = '14px';
+      closeButton.style.cursor = 'pointer';
+      closeButton.onclick = () => {
+        statsDisplay.style.display = 'none';
+      };
+      statsDisplay.appendChild(closeButton);
+    }
+
+    // 再生中でなければ表示しない
+    if (!this.isPlaying && !this.isPaused) {
+      statsDisplay.style.display = 'none';
+      return;
+    } else {
+      statsDisplay.style.display = 'block';
+    }
+
+    // 統計情報の内容を更新
+    let content = '';
+
+    // セッション情報
+    if (stats.sessionId) {
+      content += `<div><strong>セッションID:</strong> ${stats.sessionId}</div>`;
+    }
+
+    // 進捗情報
+    const progressPercent = (stats.progress * 100).toFixed(1);
+    const currentEntry = stats.currentIndex + 1;
+    const totalEntries = stats.entryCount;
+    content += `<div><strong>進捗:</strong> ${progressPercent}% (${currentEntry}/${totalEntries})</div>`;
+
+    // 時間情報
+    const currentTime = (stats.currentTime / 1000).toFixed(1);
+    const totalDuration = (stats.totalDuration / 1000).toFixed(1);
+    content += `<div><strong>時間:</strong> ${currentTime}s / ${totalDuration}s</div>`;
+
+    // 再生速度
+    content += `<div><strong>再生速度:</strong> ${stats.speed}x</div>`;
+
+    // 再生状態
+    const stateText = stats.isPaused ? '一時停止中' : '再生中';
+    content += `<div><strong>状態:</strong> ${stateText}</div>`;
+
+    // デバイス情報（もし利用可能なら）
+    if (this.sessionData && this.sessionData.metadata && this.sessionData.metadata.deviceCount) {
+      content += `<div><strong>デバイス数:</strong> ${this.sessionData.metadata.deviceCount}</div>`;
+    }
+
+    // 内容を更新
+    statsDisplay.innerHTML = statsDisplay.innerHTML.split('<div><strong>').shift() + content;
+  }
+
+  /**
+   * デバッグ用の値表示
+   * @param {string} deviceId デバイスID
+   * @param {Object} value 値
+   * @param {number} index 現在のインデックス
+   * @private
+   */
+  _showDebugValues(deviceId, value, index) {
+    // デバッグ表示が既に存在する場合は更新、なければ作成
+    let debugContainer = document.getElementById('replay-debug-values');
+
+    if (!debugContainer) {
+      debugContainer = document.createElement('div');
+      debugContainer.id = 'replay-debug-values';
+      debugContainer.style.position = 'fixed';
+      debugContainer.style.bottom = '10px';
+      debugContainer.style.left = '10px';
+      debugContainer.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+      debugContainer.style.color = 'white';
+      debugContainer.style.padding = '5px';
+      debugContainer.style.borderRadius = '5px';
+      debugContainer.style.fontSize = '12px';
+      debugContainer.style.fontFamily = 'monospace';
+      debugContainer.style.maxWidth = '300px';
+      debugContainer.style.maxHeight = '200px';
+      debugContainer.style.overflow = 'auto';
+      debugContainer.style.zIndex = '9999';
+      document.body.appendChild(debugContainer);
+    }
+
+    // デバイスごとの値表示要素を取得または作成
+    let deviceValueElement = document.getElementById(`replay-debug-${deviceId}`);
+
+    if (!deviceValueElement) {
+      deviceValueElement = document.createElement('div');
+      deviceValueElement.id = `replay-debug-${deviceId}`;
+      deviceValueElement.style.margin = '2px 0';
+      debugContainer.appendChild(deviceValueElement);
+    }
+
+    // 値を抽出
+    let displayValue = 'N/A';
+    if (value) {
+      if (value.normalizedValue !== null && value.normalizedValue !== undefined) {
+        displayValue = value.normalizedValue.toFixed(2);
+      } else if (value.rawValue !== null && value.rawValue !== undefined) {
+        displayValue = value.rawValue.toFixed(2);
+      }
+    }
+
+    // 表示を更新
+    deviceValueElement.innerHTML = `<strong>${deviceId}</strong>: ${displayValue} (エントリー: ${index + 1}/${this.sessionData?.entries?.length || 0})`;
+
+    // 進行状況バーを更新/作成
+    let progressBar = document.getElementById('replay-debug-progress');
+    if (!progressBar) {
+      progressBar = document.createElement('div');
+      progressBar.id = 'replay-debug-progress';
+      progressBar.style.width = '100%';
+      progressBar.style.height = '5px';
+      progressBar.style.backgroundColor = '#333';
+      progressBar.style.marginTop = '5px';
+      progressBar.style.position = 'relative';
+      debugContainer.appendChild(progressBar);
+
+      const progressIndicator = document.createElement('div');
+      progressIndicator.id = 'replay-debug-progress-indicator';
+      progressIndicator.style.height = '100%';
+      progressIndicator.style.backgroundColor = '#4CAF50';
+      progressIndicator.style.width = '0%';
+      progressBar.appendChild(progressIndicator);
+    }
+
+    // 進捗インジケータを更新
+    const progress = this._calculateProgress();
+    const progressIndicator = document.getElementById('replay-debug-progress-indicator');
+    if (progressIndicator) {
+      progressIndicator.style.width = `${Math.round(progress * 100)}%`;
+    }
+  }
+
+  /**
    * 再生完了時の処理
    * @private
    */
@@ -596,10 +1010,33 @@ export class ReplaySessionUseCase {
 
     this.logger.info('Playback completed');
 
+    // デバッグ表示をクリーンアップ
+    const debugContainer = document.getElementById('replay-debug-values');
+    if (debugContainer) {
+      setTimeout(() => {
+        debugContainer.style.transition = 'opacity 1s';
+        debugContainer.style.opacity = '0';
+        setTimeout(() => {
+          if (debugContainer.parentNode) {
+            debugContainer.parentNode.removeChild(debugContainer);
+          }
+        }, 1000);
+      }, 3000);
+    }
+
+    // 統計情報の更新を停止
+    this._stopStatsUpdateInterval();
+
     // イベント通知
     EventBus.emit('playbackCompleted', {
       sessionId: this.currentSessionId,
-      entryCount: this.sessionData.entries.length
+      entryCount: this.sessionData.entries.length,
+      autoStopped: true
+    });
+
+    // UIに再生が完全に終了したことを通知
+    EventBus.emit('playbackFullyStopped', {
+      sessionId: this.currentSessionId
     });
 
     // 自動巻き戻し

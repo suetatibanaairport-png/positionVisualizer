@@ -321,19 +321,104 @@ export class AppController {
   _handleDeviceValueUpdated(event) {
     const { deviceId, value } = event;
 
-    if (!value) return;
+    if (!deviceId) {
+      this.logger.warn('Device value update event with no deviceId');
+      return;
+    }
 
-    const deviceIndex = this.meterViewModel.getDeviceIndex(deviceId);
-    if (deviceIndex >= 0) {
-      // 正規化値または生値を使用
-      const normalizedValue = value.normalizedValue !== undefined ? value.normalizedValue : null;
-      const rawValue = value.rawValue !== undefined ? value.rawValue : null;
+    this.logger.debug(`Device value updated event for ${deviceId}:`, value);
 
-      // どちらかの値があれば更新
-      if (normalizedValue !== null) {
-        this.meterViewModel.setValue(deviceIndex, normalizedValue, true);
-      } else if (rawValue !== null) {
-        this.meterViewModel.setValue(deviceIndex, rawValue, true);
+    // デバイスIDからインデックスを取得
+    let deviceIndex = this.meterViewModel.getDeviceIndex(deviceId);
+
+    // デバイスインデックスが見つからない場合は新しいインデックスを割り当て
+    if (deviceIndex < 0) {
+      this.logger.info(`Device index not found for ${deviceId}, assigning new index`);
+      deviceIndex = this.meterViewModel.getOrAssignDeviceIndex(deviceId);
+
+      if (deviceIndex < 0) {
+        this.logger.error(`Failed to assign device index for ${deviceId}`);
+        return;
+      }
+
+      // 接続状態を確実に設定
+      this.meterViewModel.state.connected[deviceIndex] = true;
+      this.logger.debug(`Assigned device ${deviceId} to index ${deviceIndex}`);
+    }
+
+    // 値の抽出（様々な形式に対応）
+    let normalizedValue = null;
+    let rawValue = null;
+
+    if (value) {
+      // 異なる形式のオブジェクトに対応
+      if (typeof value === 'object') {
+        // normalizedValue/rawValue形式
+        if (value.normalizedValue !== undefined) {
+          normalizedValue = value.normalizedValue;
+        }
+        if (value.rawValue !== undefined) {
+          rawValue = value.rawValue;
+        }
+        // raw/normalized形式
+        else if (value.normalized !== undefined) {
+          normalizedValue = value.normalized;
+        }
+        else if (value.raw !== undefined) {
+          rawValue = value.raw;
+        }
+        // その他の可能性のあるフィールド
+        else if (value.value !== undefined) {
+          normalizedValue = value.value;
+          rawValue = value.value;
+        }
+        else if (value.calibrated_value !== undefined) {
+          normalizedValue = value.calibrated_value;
+          rawValue = value.calibrated_value;
+        }
+        else if (value.smoothed !== undefined) {
+          normalizedValue = value.smoothed;
+          rawValue = value.smoothed;
+        }
+      }
+      // 数値の場合は直接使用
+      else if (typeof value === 'number') {
+        normalizedValue = value;
+        rawValue = value;
+      }
+    }
+
+    // デバッグログ
+    this.logger.debug(`Setting value for device ${deviceId} (index ${deviceIndex}):`, {
+      normalizedValue,
+      rawValue,
+      connected: true
+    });
+
+    // 値を設定
+    let valueSet = false;
+
+    // 正規化値があれば優先して使用
+    if (normalizedValue !== null && normalizedValue !== undefined) {
+      this.meterViewModel.setValue(deviceIndex, normalizedValue, true);
+      this.logger.debug(`Updated device ${deviceId} with normalized value: ${normalizedValue}`);
+      valueSet = true;
+    }
+    // なければ生値を使用
+    else if (rawValue !== null && rawValue !== undefined) {
+      this.meterViewModel.setValue(deviceIndex, rawValue, true);
+      this.logger.debug(`Updated device ${deviceId} with raw value: ${rawValue}`);
+      valueSet = true;
+    }
+
+    // どの値も設定できなかった場合は警告
+    if (!valueSet) {
+      this.logger.warn(`No valid value could be extracted for device ${deviceId}:`, value);
+
+      // 再生モードの場合は、とりあえず0を設定して動きを見せる（デバッグ用）
+      if (this.replayingEnabled) {
+        this.logger.debug(`Setting fallback value 0 for replay mode device ${deviceId}`);
+        this.meterViewModel.setValue(deviceIndex, 0, true);
       }
     }
   }
@@ -490,7 +575,15 @@ export class AppController {
    * @returns {Promise<boolean>} 成功したかどうか
    */
   async startReplay(sessionId) {
-    if (this.replayingEnabled || !this.replaySessionUseCase) {
+    // すでに再生中の場合は一度停止してから再開
+    if (this.replayingEnabled && this.replaySessionUseCase) {
+      this.logger.info('Stopping current replay before starting new one');
+      this.stopReplay();
+
+      // 少し待機して状態が完全に切り替わるようにする
+      await new Promise(resolve => setTimeout(resolve, 500));
+    } else if (!this.replaySessionUseCase) {
+      this.logger.error('ReplaySessionUseCase not available');
       return false;
     }
 
@@ -506,6 +599,90 @@ export class AppController {
     const success = await this.replaySessionUseCase.loadSession(sessionId);
 
     if (success) {
+      // セッションデータを取得
+      const sessionData = this.replaySessionUseCase.getSessionData();
+      if (!sessionData) {
+        this.logger.error('Failed to get session data');
+        return false;
+      }
+
+      if (!sessionData.entries || !Array.isArray(sessionData.entries)) {
+        this.logger.error('Session data has no entries or entries is not an array');
+        return false;
+      }
+
+      this.logger.info('Session data loaded:', {
+        entryCount: sessionData.entries.length,
+        deviceCount: sessionData.metadata?.deviceCount || 'unknown',
+        metadata: sessionData.metadata || 'no metadata'
+      });
+
+      // エントリに含まれるすべてのデバイスを特定
+      const deviceIdsInEntries = new Set(sessionData.entries.map(entry => entry.deviceId));
+      this.logger.info(`Devices in entries: ${Array.from(deviceIdsInEntries).join(', ')}`);
+
+      // デバイス情報のログ出力
+      if (sessionData.metadata && sessionData.metadata.deviceInfo) {
+        this.logger.info('Device info from metadata:');
+        Object.entries(sessionData.metadata.deviceInfo).forEach(([id, info]) => {
+          this.logger.info(`  ${id}: name=${info.name || 'none'}, icon=${info.iconUrl ? 'present' : 'none'}`);
+        });
+      } else {
+        this.logger.warn('No device info in metadata');
+      }
+
+      // すべてのデバイスが初期状態で登録されるようにする
+      for (const deviceId of deviceIdsInEntries) {
+        // デフォルト情報でデバイスを登録（後でメタデータから上書き）
+        this.logger.info(`Pre-registering device: ${deviceId}`);
+        await this.deviceService.registerDevice(deviceId, { name: deviceId });
+
+        // デバイスインデックスを確実に割り当てる
+        const deviceIndex = this.meterViewModel.getOrAssignDeviceIndex(deviceId);
+        this.logger.info(`Assigned device ${deviceId} to index ${deviceIndex}`);
+      }
+
+      // デバイス情報の設定（アイコンや名前）
+      if (sessionData && sessionData.metadata && sessionData.metadata.deviceInfo) {
+        const deviceInfo = sessionData.metadata.deviceInfo;
+        this.logger.info(`Device info from metadata:`, deviceInfo);
+
+        for (const [deviceId, info] of Object.entries(deviceInfo)) {
+          // デバイスの登録/更新
+          this.logger.info(`Registering device with info: ${deviceId}`, info);
+          await this.deviceService.registerDevice(deviceId, info);
+
+          // アイコン情報があればアイコンを設定
+          if (info.iconUrl) {
+            this.logger.info(`Setting icon for device ${deviceId}`);
+            await this.setDeviceIcon(deviceId, info.iconUrl);
+          }
+
+          // デバイス名があればデバイス名を設定
+          if (info.name) {
+            this.logger.info(`Setting name for device ${deviceId}: ${info.name}`);
+            await this.setDeviceName(deviceId, info.name);
+          }
+
+          // デバイスインデックスを取得
+          const deviceIndex = this.meterViewModel.getDeviceIndex(deviceId);
+          if (deviceIndex >= 0) {
+            this.logger.info(`Device ${deviceId} has index ${deviceIndex}`);
+
+            // 接続状態を強制的にONにする
+            this.meterViewModel.state.connected[deviceIndex] = true;
+            this.meterViewModel._notifyChange();
+          } else {
+            this.logger.warn(`Failed to get index for device ${deviceId}`);
+          }
+        }
+      } else {
+        this.logger.warn('No device info in session metadata');
+      }
+
+      // 再生開始前にまだ一度通知を行う
+      this.meterViewModel._notifyChange();
+
       // 再生開始
       this.replaySessionUseCase.play();
       this.replayingEnabled = true;

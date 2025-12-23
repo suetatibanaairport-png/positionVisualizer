@@ -40,6 +40,7 @@ class AppBootstrap {
       monitorInterval: options.monitorInterval || 100,
       containerId: options.containerId || 'app-container',
       autoStart: options.autoStart || true,
+      deviceTimeoutMs: options.deviceTimeoutMs || 0, // 0を設定してタイムアウト機能を完全に無効化
       ...options
     };
 
@@ -137,7 +138,7 @@ class AppBootstrap {
       infraComponents.valueRepository,
       {
         maxDevices: this.options.maxDevices,
-        deviceTimeoutMs: 10000,
+        deviceTimeoutMs: 0, // 0を設定してタイムアウト機能を完全に無効化
         autoConnect: true
       }
     );

@@ -384,6 +384,20 @@ body {
   flex: 1;
 }
 
+/* 記録停止ボタン（赤色系） */
+#stop-record {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%) !important;
+  border: 1px solid #b91c1c !important;
+  color: white !important;
+  font-weight: 600 !important;
+  box-shadow: 0 2px 4px rgba(220, 38, 38, 0.3) !important;
+}
+
+#stop-record:hover {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+  box-shadow: 0 4px 6px rgba(220, 38, 38, 0.5) !important;
+}
+
 #manual-controls .device-group {
   margin-bottom: 0;
 }

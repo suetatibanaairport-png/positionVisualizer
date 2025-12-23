@@ -11,7 +11,7 @@ body.overlay-mode {
 
 /* クロマキーモード（緑背景） */
 body.overlay-mode.chroma-key {
-  background-color: #00ff00; /* Green for chroma key */
+  background-color: #00ff00 !important; /* Green for chroma key - with !important to ensure it overrides other styles */
 }
 
 /* オーバーレイモードのコンテナ */
@@ -67,35 +67,15 @@ body.overlay-mode .visualizer {
   align-items: center;
 }
 
-/* オーバーレイモードのヘッダー */
-body.overlay-mode .visualizer-header {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  width: auto;
-  margin: 0;
-  padding: 0;
-  background: rgba(0, 0, 0, 0.5);
-  border-radius: 8px;
-  padding: 5px;
-  z-index: 100;
-}
-
-body.overlay-mode .visualizer-title {
-  display: none;
-}
-
-/* オーバーレイモードのボタン */
+/* オーバーレイモードではヘッダーを完全に非表示 */
+body.overlay-mode .visualizer-header,
+body.overlay-mode .header-buttons,
+body.overlay-mode .visualizer-title,
 body.overlay-mode .overlay-button {
-  background-color: rgba(51, 65, 85, 0.8);
-  font-size: 12px;
-  padding: 6px 10px;
-  min-width: 100px;
+  display: none !important;
 }
 
-body.overlay-mode .overlay-button:hover {
-  background-color: rgba(30, 41, 59, 0.9);
-}
+/* オーバーレイモードのボタンは使用しないため削除 */
 
 /* 通知とエラーメッセージ */
 .overlay-notification,

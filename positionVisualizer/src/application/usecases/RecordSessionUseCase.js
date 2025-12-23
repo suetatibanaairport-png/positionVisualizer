@@ -125,6 +125,11 @@ export class RecordSessionUseCase {
       );
 
       this.logger.info(`Saved recording session: ${sessionId}`);
+
+      // エントリがある場合は自動的にダウンロード
+      if (entries.length > 0) {
+        await this.saveRecordedData(entries);
+      }
     }
 
     // イベント通知
@@ -226,20 +231,69 @@ export class RecordSessionUseCase {
     const saveFilename = filename || defaultFilename;
 
     try {
+      // デバイスIDを収集
+      const deviceIds = new Set(dataToSave.map(e => e.deviceId));
+
+      // デバイス情報を収集
+      const deviceInfo = {};
+
+      // 各デバイスIDについてデバイス情報を収集
+      for (const deviceId of deviceIds) {
+        try {
+          // EventBusを通じてデバイス情報を取得
+          const device = await this.valueRepository.getDeviceInfo?.(deviceId);
+          if (device) {
+            deviceInfo[deviceId] = {
+              name: device.name,
+              iconUrl: device.iconUrl
+            };
+          }
+        } catch (error) {
+          this.logger.warn(`Could not get device info for ${deviceId}`);
+        }
+      }
+
       // データのフォーマット
       const formattedData = {
         metadata: {
           version: "1.0",
           createdAt: new Date().toISOString(),
-          deviceCount: new Set(dataToSave.map(e => e.deviceId)).size,
+          deviceCount: deviceIds.size,
           entriesCount: dataToSave.length,
           startTime: this.startTime,
-          endTime: Date.now()
+          endTime: Date.now(),
+          deviceInfo: deviceInfo // デバイス情報を追加
         },
         entries: this._formatEntriesForExport(dataToSave)
       };
 
-      // データの保存
+      // ブラウザ環境の場合、ファイルをダウンロード
+      if (typeof Blob !== 'undefined' && typeof URL !== 'undefined') {
+        const jsonContent = JSON.stringify(formattedData, null, 2);
+        const blob = new Blob([jsonContent], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+
+        // ダウンロードリンクを作成
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = saveFilename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        this.logger.info(`Recording downloaded as ${saveFilename} (${dataToSave.length} entries)`);
+
+        // イベント通知
+        EventBus.emit('recordingSaved', {
+          filename: saveFilename,
+          entriesCount: dataToSave.length
+        });
+
+        return true;
+      }
+
+      // ブラウザ環境以外またはバックアップとして、リポジトリも使用
       const result = await this.sessionRepository.exportSession(formattedData, saveFilename);
 
       if (result) {

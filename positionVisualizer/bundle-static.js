@@ -24,6 +24,9 @@ const extensions = [
 // テキストファイル拡張子（それ以外はバイナリとして扱う）
 const textExtensions = ['.html', '.css', '.js', '.json', '.svg', '.txt', '.md'];
 
+// 除外するファイル名
+const excludeFiles = ['bundled-resources.js', 'bundled-resources.js.map'];
+
 // ディレクトリを再帰的にスキャンしてファイルを見つける関数
 function scanDirectory(dir, baseDir, result = {}) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -31,6 +34,12 @@ function scanDirectory(dir, baseDir, result = {}) {
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
     const relativePath = path.relative(baseDir, fullPath).replace(/\\/g, '/');
+
+    // 指定されたファイルを除外
+    if (excludeFiles.includes(entry.name)) {
+      console.log(`除外: ${entry.name}`);
+      continue;
+    }
 
     // node_modules, .git, toolsディレクトリはスキップ
     if (entry.isDirectory()) {

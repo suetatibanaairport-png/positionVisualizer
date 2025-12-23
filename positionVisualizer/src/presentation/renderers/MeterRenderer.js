@@ -350,13 +350,16 @@ export class MeterRenderer {
                     const percentage = parseFloat(percentageAttr);
                     const lastValue = this.lastValues.get(index);
 
-                    // 値が変わっている場合のみ更新
-                    if (lastValue !== percentage) {
-                      this.lastValues.set(index, percentage);
+                    // 値が変わっている場合、またはnullの場合でも更新
+                    // 値が同じでも毎回更新することで表示を確実に維持
+                    if (lastValue !== percentage || percentage === null) {
+                      // nullの場合は前回の値を使用（値が消えるのを防止）
+                      const displayValue = percentage !== null ? percentage : (lastValue || 0);
+                      this.lastValues.set(index, displayValue);
                       hasValueChange = true;
 
                       // テキスト要素を更新
-                      this._updateIconValue(target, percentage, target.getAttribute('data-unit') || '%');
+                      this._updateIconValue(target, displayValue, target.getAttribute('data-unit') || '%');
                     }
                   }
                 }
@@ -439,9 +442,14 @@ export class MeterRenderer {
       existing.set(g.getAttribute('data-perf'), g);
     });
 
-    // 接続されているデバイスのインデックスを取得
+    // viewModelStateが完全な形式であるかチェック
+    const hasTempDisconnected = viewModelState &&
+                               viewModelState.tempDisconnected &&
+                               Array.isArray(viewModelState.tempDisconnected);
+
+    // 接続されているデバイス、または一時的に切断されているデバイスのインデックスを取得
     const connectedIndices = viewModelState.connected
-      .map((connected, i) => connected ? i : -1)
+      .map((connected, i) => (connected || (hasTempDisconnected && viewModelState.tempDisconnected[i])) ? i : -1)
       .filter(i => i !== -1);
 
     // 接続デバイス数に合わせてレイアウトを調整
@@ -452,26 +460,60 @@ export class MeterRenderer {
       return percentage; // 単純に返す（表示値として使用）
     };
 
+    // デバイスの値を永続的にキャッシュするためのマップを初期化
+    if (!this._lastDeviceValues) {
+      this._lastDeviceValues = new Map();
+      this.logger.debug('Initialized device values cache map');
+    }
+
     viewModelState.values.forEach((val, index) => {
-      // 値がnullの場合やデバイスが接続されていない場合はスキップ
-      // ただし、接続されている場合は値がnullでも表示する（一時的なデータ更新の間も表示を維持）
-      if (!viewModelState.connected[index]) {
+      // デバイスが接続されていない、かつ一時的な切断状態でもない場合はスキップ
+      const isConnected = viewModelState.connected[index];
+      const isTempDisconnected = hasTempDisconnected && viewModelState.tempDisconnected[index];
+
+      if (!isConnected && !isTempDisconnected) {
         // 既存のアイコンがあれば削除
         const existingG = this.svg.querySelector(`g[data-perf="${index}"]`);
         if (existingG) existingG.remove();
         existing.delete(String(index));
+        // 最後の値もクリア
+        if (this._lastDeviceValues.has(index)) {
+          this.logger.debug(`Clearing cached value for disconnected device ${index}`);
+          this._lastDeviceValues.delete(index);
+        }
         return;
       }
 
-      // 値がnullの場合は前回の値を保持（表示を維持）
-      const actualVal = (val === null || val === undefined) ? 0 : val;
+      // 値がnullの場合は最後の有効な値を使用（アイコンが消えるのを防ぐ）
+      let actualVal;
+      if (val === null || val === undefined) {
+        // 過去に有効な値があればそれを使用
+        if (this._lastDeviceValues.has(index)) {
+          actualVal = this._lastDeviceValues.get(index);
+          this.logger.debug(`Using cached value for device ${index}: ${actualVal}`);
+        } else {
+          // 過去の値もなければ0を使用
+          actualVal = 0;
+          this.logger.debug(`No cached value for device ${index}, using default: 0`);
+          // 初期値をキャッシュ
+          this._lastDeviceValues.set(index, actualVal);
+        }
+      } else {
+        // 有効な値を受け取ったら、その値をキャッシュして使用
+        actualVal = val;
+        this._lastDeviceValues.set(index, val);
+      }
 
       // このインデックスのレーンインデックスを計算
       let laneIndex = connectedIndices.indexOf(index);
       if (laneIndex < 0) laneIndex = 0;
 
+      // 数値への変換と安全な値の保証
       const numericVal = Number(actualVal);
       const safeVal = Number.isFinite(numericVal) ? numericVal : 0;
+
+      // 値に問題があっても位置計算は必ず行う
+      // レーンのオフセットとデバイス数を考慮した位置計算
       const pos = this._calculateIconPosition(safeVal, laneIndex, deviceCount);
 
       // アイコン要素を取得または作成
