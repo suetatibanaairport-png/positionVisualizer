@@ -7,21 +7,24 @@
 // インフラ層
 import { LocalStorageAdapter } from '../infrastructure/adapters/LocalStorageAdapter.js';
 import { WebSocketClient } from '../infrastructure/adapters/WebSocketClient.js';
+import { EventBusAdapter } from '../infrastructure/adapters/EventBusAdapter.js';
+import { LoggerAdapter } from '../infrastructure/adapters/LoggerAdapter.js';
 import { DeviceRepository } from '../infrastructure/repositories/DeviceRepository.js';
 import { ValueRepository } from '../infrastructure/repositories/ValueRepository.js';
 import { SettingsRepository } from '../infrastructure/repositories/SettingsRepository.js';
-import { EventBus } from '../infrastructure/services/EventBus.js';
-import { AppLogger } from '../infrastructure/services/Logger.js';
+import { LogSessionRepository } from '../infrastructure/repositories/LogSessionRepository.js';
 
 // アプリケーション層
 import { DeviceService } from './services/DeviceService.js';
+import { LogService } from './services/log/LogService.js';
 import { MonitorValuesUseCase } from './usecases/MonitorValuesUseCase.js';
 import { RecordSessionUseCase } from './usecases/RecordSessionUseCase.js';
-import { ReplaySessionUseCase } from './usecases/ReplaySessionUseCase.js';
+import { LogReplayUseCase } from './usecases/LogReplayUseCase.js';
 
 // プレゼンテーション層
 import { MeterViewModel } from '../presentation/viewmodels/MeterViewModel.js';
 import { MeterRenderer } from '../presentation/renderers/MeterRenderer.js';
+import { DeviceListViewModel } from '../presentation/viewmodels/DeviceListViewModel.js';
 import { AppController } from '../presentation/controllers/AppController.js';
 
 /**
@@ -47,8 +50,8 @@ class AppBootstrap {
     // アプリケーションインスタンス
     this.app = null;
 
-    // ロガー
-    this.logger = AppLogger.createLogger('AppBootstrap');
+    // ロガー（アダプターを使用）
+    this.logger = new LoggerAdapter('AppBootstrap');
   }
 
   /**
@@ -112,6 +115,11 @@ class AppBootstrap {
     const deviceRepository = new DeviceRepository(storageAdapter);
     const valueRepository = new ValueRepository(storageAdapter);
     const settingsRepository = new SettingsRepository(storageAdapter);
+    const logSessionRepository = new LogSessionRepository(storageAdapter);
+
+    // イベントバスとロガーのアダプターを作成
+    const eventBusAdapter = new EventBusAdapter();
+    const loggerAdapter = new LoggerAdapter('System');
 
     return {
       storageAdapter,
@@ -119,7 +127,9 @@ class AppBootstrap {
       deviceRepository,
       valueRepository,
       settingsRepository,
-      eventBus: EventBus
+      logSessionRepository,
+      eventBus: eventBusAdapter,
+      logger: loggerAdapter
     };
   }
 
@@ -153,31 +163,30 @@ class AppBootstrap {
     );
 
     const recordSessionUseCase = new RecordSessionUseCase(
-      infraComponents.sessionRepository || { // セッションリポジトリがない場合はダミー
-        saveSession: async () => true,
-        getSessions: async () => [],
-        getSession: async () => null,
-        exportSession: async () => true
-      },
+      infraComponents.logSessionRepository,
       infraComponents.valueRepository
     );
 
-    const replaySessionUseCase = new ReplaySessionUseCase(
-      infraComponents.sessionRepository || { // セッションリポジトリがない場合はダミー
-        getSession: async () => null
-      },
-      infraComponents.valueRepository,
+    const replaySessionUseCase = new LogReplayUseCase(
+      infraComponents.logSessionRepository,
       {
         autoRewind: true,
         replaySpeedMultiplier: 1.0
       }
     );
 
+    // ログサービス
+    const logService = new LogService(
+      infraComponents.logSessionRepository,
+      infraComponents.deviceRepository
+    );
+
     return {
       deviceService,
       monitorUseCase,
       recordSessionUseCase,
-      replaySessionUseCase
+      replaySessionUseCase,
+      logService
     };
   }
 
@@ -205,20 +214,35 @@ class AppBootstrap {
       }
     }
 
-    // ViewModel
-    const meterViewModel = new MeterViewModel({
-      maxDevices: this.options.maxDevices,
-      interpolationTime: 200
-    });
+    // ViewModel（インターフェースを注入）
+    const meterViewModel = new MeterViewModel(
+      {
+        maxDevices: this.options.maxDevices,
+        interpolationTime: 200
+      },
+      infraComponents.eventBus,
+      infraComponents.logger
+    );
 
     // レンダラー
     const meterRenderer = containerElement ? new MeterRenderer(containerElement, {
       size: Math.min(containerElement.clientWidth || 500, containerElement.clientHeight || 500)
     }) : null;
 
+    // デバイスリストViewModel（インターフェースを注入）
+    const deviceListViewModel = new DeviceListViewModel(
+      {
+        containerSelector: '#device-inputs',
+        noDevicesSelector: '#no-devices-message'
+      },
+      infraComponents.eventBus,
+      infraComponents.logger
+    );
+
     return {
       meterViewModel,
-      meterRenderer
+      meterRenderer,
+      deviceListViewModel
     };
   }
 
@@ -239,16 +263,20 @@ class AppBootstrap {
       webSocketClient: infraComponents.webSocketClient,
       storageAdapter: infraComponents.storageAdapter,
       settingsRepository: infraComponents.settingsRepository,
+      eventEmitter: infraComponents.eventBus, // インターフェースに基づく注入
+      logger: infraComponents.logger,         // インターフェースに基づく注入
 
       // アプリケーション層
       deviceService: applicationComponents.deviceService,
       monitorUseCase: applicationComponents.monitorUseCase,
       recordSessionUseCase: applicationComponents.recordSessionUseCase,
       replaySessionUseCase: applicationComponents.replaySessionUseCase,
+      logService: applicationComponents.logService,
 
       // プレゼンテーション層
       meterViewModel: presentationComponents.meterViewModel,
       meterRenderer: presentationComponents.meterRenderer,
+      deviceListViewModel: presentationComponents.deviceListViewModel,
 
       // 設定
       webSocketUrl: this.options.webSocketUrl,
@@ -257,6 +285,14 @@ class AppBootstrap {
         autoConnect: true
       }
     });
+  }
+
+  /**
+   * アプリケーションコントローラーの取得
+   * @returns {AppController} アプリケーションコントローラー
+   */
+  getController() {
+    return this.app;
   }
 
   /**

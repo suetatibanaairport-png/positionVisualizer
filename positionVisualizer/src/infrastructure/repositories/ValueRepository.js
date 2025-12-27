@@ -8,6 +8,7 @@ import { DeviceValue } from '../../domain/entities/DeviceValue.js';
 import { IValueRepository } from '../../domain/repositories/IValueRepository.js';
 import { EventBus } from '../services/EventBus.js';
 import { AppLogger } from '../services/Logger.js';
+import { EventTypes } from '../../domain/events/EventTypes.js';
 
 /**
  * 値リポジトリの実装
@@ -220,8 +221,14 @@ export class ValueRepository extends IValueRepository {
    * @private
    */
   _notifyValueChange(deviceId, value, previousValue) {
+    // デバッグログ追加：値変更のイベント発行タイミング
+    this.logger.debug(`値変更イベント発行: デバイスID=${deviceId}, 値=${JSON.stringify(value)}, 前回値あり=${!!previousValue}`);
+
     // デバイスごとのリスナーに通知
     if (this.listeners.has(deviceId)) {
+      const listenersCount = this.listeners.get(deviceId).length;
+      this.logger.debug(`デバイス ${deviceId} に対する直接リスナー数: ${listenersCount}`);
+
       this.listeners.get(deviceId).forEach(callback => {
         try {
           callback(value, previousValue);
@@ -231,11 +238,21 @@ export class ValueRepository extends IValueRepository {
       });
     }
 
-    // イベントバスでグローバルに通知
+    // イベントバスでグローバルに通知（新しいイベント命名規則を使用）
+    this.logger.debug(`EventBus経由で DEVICE_VALUE_UPDATED イベントを発行: ${deviceId}`);
+    EventBus.emit(EventTypes.DEVICE_VALUE_UPDATED, {
+      deviceId,
+      value,
+      previousValue,
+      timestamp: Date.now() // タイムスタンプを追加して発行時間を記録
+    });
+
+    // 後方互換性のために旧イベント名でも発行
     EventBus.emit('deviceValueChanged', {
       deviceId,
       value,
-      previousValue
+      previousValue,
+      timestamp: Date.now()
     });
   }
 
@@ -436,5 +453,37 @@ export class ValueRepository extends IValueRepository {
         }
       }
     };
+  }
+
+  /**
+   * デバイス情報を取得
+   * @param {string} deviceId デバイスID
+   * @returns {Promise<Object|null>} デバイス情報またはnull
+   */
+  async getDeviceInfo(deviceId) {
+    try {
+      // デバイス情報をEventBusから取得する代わりに、アプリケーション内で保持しているデータを使用
+      // 通常、デバイスサービスからデバイス情報を取得すべきだが、ここでは代替として現在の値から情報を取得
+      const value = this.currentValues.get(deviceId);
+
+      if (!value) {
+        this.logger.debug(`No device info available for ${deviceId}`);
+        return null;
+      }
+
+      // デバイス情報を構築
+      // 実際のデバイス名やアイコンは別のサービスから取得することが望ましいが、
+      // ここでは簡易的に現在の値から取得可能な情報を返す
+      return {
+        id: deviceId,
+        name: deviceId, // デフォルト名としてデバイスIDを使用
+        iconUrl: null,   // デフォルトアイコンはnull
+        lastSeen: value.timestamp,
+        connected: true
+      };
+    } catch (error) {
+      this.logger.error(`Error getting device info for ${deviceId}:`, error);
+      return null;
+    }
   }
 }

@@ -294,6 +294,54 @@ export class DeviceService {
   }
 
   /**
+   * デバイスの表示/非表示を設定
+   * @param {string} deviceId デバイスID
+   * @param {boolean} isVisible 表示するかどうか
+   * @returns {Promise<boolean>} 成功したかどうか
+   */
+  async setDeviceVisibility(deviceId, isVisible) {
+    const device = await this.deviceRepository.getById(deviceId);
+
+    if (!device) {
+      this.logger.warn(`Cannot set visibility for non-existent device: ${deviceId}`);
+      return false;
+    }
+
+    // メタデータに表示状態を保存
+    const previousVisibility = device.metadata.visible;
+
+    // 値が実際に変わる場合のみ処理を続行
+    if (previousVisibility === isVisible) {
+      this.logger.debug(`Device visibility unchanged for ${deviceId}: ${isVisible}`);
+      return true; // 変化なしでも成功として扱う
+    }
+
+    device.updateMetadata({ visible: isVisible });
+
+    // イベント発火（deviceUpdated イベント）
+    EventBus.emit('deviceUpdated', new DeviceUpdatedEvent(deviceId, {
+      visible: {
+        old: previousVisibility,
+        new: isVisible
+      }
+    }));
+
+    // 新しいイベント型でも発火
+    // 重要: この部分が無限ループを引き起こす可能性がある
+    // イベントはUI操作から直接発行されるべきであり、ここでは発行しない
+    // EventBus.emit('deviceVisibilityChange', {
+    //   deviceId,
+    //   isVisible
+    // });
+
+    // 保存
+    await this.deviceRepository.save(device);
+
+    this.logger.info(`Device visibility updated: ${deviceId} (${previousVisibility} -> ${isVisible})`);
+    return true;
+  }
+
+  /**
    * すべてのデバイスをリセット
    * @returns {Promise<boolean>} 成功したかどうか
    */

@@ -219,10 +219,21 @@ export class Logger {
     // 色付きログ出力（対応ブラウザのみ）
     if (this.options.useColors && typeof window !== 'undefined') {
       const color = this.colors[level] || '';
-      consoleMethod(`%c${prefix}`, color, ...logInfo.args);
+
+      // 引数が存在し、かつ空でない場合のみ引数を追加
+      if (logInfo.args && logInfo.args.length > 0 && logInfo.args[0] !== undefined) {
+        consoleMethod(`%c${prefix}`, color, ...logInfo.args);
+      } else {
+        // 引数がない場合は prefix のみ出力（undefined が追加されるのを防止）
+        consoleMethod(`%c${prefix}`, color);
+      }
     } else {
-      // 色なしログ出力
-      consoleMethod(prefix, ...logInfo.args);
+      // 色なしログ出力も同様に修正
+      if (logInfo.args && logInfo.args.length > 0 && logInfo.args[0] !== undefined) {
+        consoleMethod(prefix, ...logInfo.args);
+      } else {
+        consoleMethod(prefix);
+      }
     }
   }
 

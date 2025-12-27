@@ -6,6 +6,7 @@
     <title>positionVisualizer</title>
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/overlay.css">
+    <link rel="stylesheet" href="css/playback-controls.css">
     <link rel="preload" href="assets/icon.svg" as="image" type="image/svg+xml">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
@@ -114,49 +115,9 @@
     <div class="container">
         <div class="controls">
             <h2>デバイス設定</h2>
-            <div class="device-inputs">
-                <div class="device-group">
-                    <label>デバイス1</label>
-                    <label class="icon-file-button" for="device1-icon">
-                        <input type="file" id="device1-icon" accept="image/*" class="icon-file-input">
-                        <span class="icon-button-text">画像を選択</span>
-                    </label>
-                </div>
-                <div class="device-group">
-                    <label>デバイス2</label>
-                    <label class="icon-file-button" for="device2-icon">
-                        <input type="file" id="device2-icon" accept="image/*" class="icon-file-input">
-                        <span class="icon-button-text">画像を選択</span>
-                    </label>
-                </div>
-                <div class="device-group">
-                    <label>デバイス3</label>
-                    <label class="icon-file-button" for="device3-icon">
-                        <input type="file" id="device3-icon" accept="image/*" class="icon-file-input">
-                        <span class="icon-button-text">画像を選択</span>
-                    </label>
-                </div>
-                <div class="device-group">
-                    <label>デバイス4</label>
-                    <label class="icon-file-button" for="device4-icon">
-                        <input type="file" id="device4-icon" accept="image/*" class="icon-file-input">
-                        <span class="icon-button-text">画像を選択</span>
-                    </label>
-                </div>
-                <div class="device-group">
-                    <label>デバイス5</label>
-                    <label class="icon-file-button" for="device5-icon">
-                        <input type="file" id="device5-icon" accept="image/*" class="icon-file-input">
-                        <span class="icon-button-text">画像を選択</span>
-                    </label>
-                </div>
-                <div class="device-group">
-                    <label>デバイス6</label>
-                    <label class="icon-file-button" for="device6-icon">
-                        <input type="file" id="device6-icon" accept="image/*" class="icon-file-input">
-                        <span class="icon-button-text">画像を選択</span>
-                    </label>
-                </div>
+            <div id="device-inputs" class="device-inputs">
+                <!-- デバイスリストが動的に生成されます -->
+                <div id="no-devices-message" class="no-devices-message">デバイスが接続されていません</div>
             </div>
         </div>
 
@@ -198,26 +159,16 @@
                 </div>
             </div>
         </div>
-        
+
+        <!-- ログ管理セクション - LogManagerComponentで管理 -->
         <div class="log-sections">
-            <div class="log-replay-section">
-                <label>ログ再生</label>
-                <input type="file" id="log-file" accept="application/json,.json">
-                <div class="log-replay-buttons">
-                    <button id="play-log">再生</button>
-                    <button id="stop-log">停止</button>
-                </div>
-                <!-- ここにコントロールが動的に追加されます -->
-                <div id="playback-controls-container"></div>
+            <!-- 新しいログ管理コンポーネント用のコンテナ -->
+            <div id="log-manager-container">
+                <!-- LogManagerComponentによって内部が構築されます -->
             </div>
-            <div class="log-record-section">
-                <label>ログ記録</label>
-                <div class="log-record-status" id="log-record-status">停止中</div>
-                <div class="log-record-buttons">
-                    <button id="start-record">記録開始</button>
-                    <button id="stop-record">記録終了</button>
-                </div>
-            </div>
+
+            <!-- 再生コントロールのコンテナ -->
+            <div id="playback-controls-container"></div>
         </div>
     </div>
 
@@ -229,8 +180,6 @@
             maxDevices: 6
         };
     </script>
-    <script src="app.js"></script>
+    <script type="module" src="app.js"></script>
 </body>
 </html>
-
-

@@ -1,0 +1,206 @@
+{
+  "metadata": {
+    "version": "1.0",
+    "createdAt": "2025-12-26T08:30:00.000Z",
+    "deviceCount": 3,
+    "entriesCount": 20,
+    "startTime": 1766738400000,
+    "endTime": 1766738410000,
+    "deviceInfo": {
+      "lever1": {
+        "name": "レバー1号機",
+        "iconUrl": null
+      },
+      "lever2": {
+        "name": "レバー2号機",
+        "iconUrl": null
+      },
+      "lever3": {
+        "name": "レバー3号機",
+        "iconUrl": null
+      }
+    }
+  },
+  "entries": [
+    {
+      "deviceId": "lever1",
+      "value": {
+        "rawValue": 20,
+        "normalizedValue": 20
+      },
+      "timestamp": 1766738400000,
+      "relativeTime": 0
+    },
+    {
+      "deviceId": "lever2",
+      "value": {
+        "rawValue": 50,
+        "normalizedValue": 50
+      },
+      "timestamp": 1766738400000,
+      "relativeTime": 0
+    },
+    {
+      "deviceId": "lever3",
+      "value": {
+        "rawValue": 80,
+        "normalizedValue": 80
+      },
+      "timestamp": 1766738400000,
+      "relativeTime": 0
+    },
+    {
+      "deviceId": "lever1",
+      "value": {
+        "rawValue": 30,
+        "normalizedValue": 30
+      },
+      "timestamp": 1766738401000,
+      "relativeTime": 1000
+    },
+    {
+      "deviceId": "lever2",
+      "value": {
+        "rawValue": 55,
+        "normalizedValue": 55
+      },
+      "timestamp": 1766738401000,
+      "relativeTime": 1000
+    },
+    {
+      "deviceId": "lever3",
+      "value": {
+        "rawValue": 70,
+        "normalizedValue": 70
+      },
+      "timestamp": 1766738401000,
+      "relativeTime": 1000
+    },
+    {
+      "deviceId": "lever1",
+      "value": {
+        "rawValue": 40,
+        "normalizedValue": 40
+      },
+      "timestamp": 1766738402000,
+      "relativeTime": 2000
+    },
+    {
+      "deviceId": "lever2",
+      "value": {
+        "rawValue": 60,
+        "normalizedValue": 60
+      },
+      "timestamp": 1766738402000,
+      "relativeTime": 2000
+    },
+    {
+      "deviceId": "lever3",
+      "value": {
+        "rawValue": 60,
+        "normalizedValue": 60
+      },
+      "timestamp": 1766738402000,
+      "relativeTime": 2000
+    },
+    {
+      "deviceId": "lever1",
+      "value": {
+        "rawValue": 50,
+        "normalizedValue": 50
+      },
+      "timestamp": 1766738403000,
+      "relativeTime": 3000
+    },
+    {
+      "deviceId": "lever2",
+      "value": {
+        "rawValue": 65,
+        "normalizedValue": 65
+      },
+      "timestamp": 1766738403000,
+      "relativeTime": 3000
+    },
+    {
+      "deviceId": "lever3",
+      "value": {
+        "rawValue": 50,
+        "normalizedValue": 50
+      },
+      "timestamp": 1766738403000,
+      "relativeTime": 3000
+    },
+    {
+      "deviceId": "lever1",
+      "value": {
+        "rawValue": 60,
+        "normalizedValue": 60
+      },
+      "timestamp": 1766738404000,
+      "relativeTime": 4000
+    },
+    {
+      "deviceId": "lever2",
+      "value": {
+        "rawValue": 70,
+        "normalizedValue": 70
+      },
+      "timestamp": 1766738404000,
+      "relativeTime": 4000
+    },
+    {
+      "deviceId": "lever3",
+      "value": {
+        "rawValue": 40,
+        "normalizedValue": 40
+      },
+      "timestamp": 1766738404000,
+      "relativeTime": 4000
+    },
+    {
+      "deviceId": "lever1",
+      "value": {
+        "rawValue": 70,
+        "normalizedValue": 70
+      },
+      "timestamp": 1766738405000,
+      "relativeTime": 5000
+    },
+    {
+      "deviceId": "lever2",
+      "value": {
+        "rawValue": 75,
+        "normalizedValue": 75
+      },
+      "timestamp": 1766738405000,
+      "relativeTime": 5000
+    },
+    {
+      "deviceId": "lever3",
+      "value": {
+        "rawValue": 30,
+        "normalizedValue": 30
+      },
+      "timestamp": 1766738405000,
+      "relativeTime": 5000
+    },
+    {
+      "deviceId": "lever1",
+      "value": {
+        "rawValue": 80,
+        "normalizedValue": 80
+      },
+      "timestamp": 1766738406000,
+      "relativeTime": 6000
+    },
+    {
+      "deviceId": "lever2",
+      "value": {
+        "rawValue": 80,
+        "normalizedValue": 80
+      },
+      "timestamp": 1766738406000,
+      "relativeTime": 6000
+    }
+  ]
+}

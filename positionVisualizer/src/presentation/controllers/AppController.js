@@ -4,8 +4,12 @@
  * 各レイヤー間の調整や依存関係の注入を担当
  */
 
-import { AppLogger } from '../../infrastructure/services/Logger.js';
-import { EventBus } from '../../infrastructure/services/EventBus.js';
+import { LogManagerComponent } from '../components/log/LogManagerComponent.js';
+import { PlaybackControlsComponent } from '../components/log/PlaybackControlsComponent.js';
+import { DeviceListViewModel } from '../viewmodels/DeviceListViewModel.js';
+import { ILogger } from '../services/ILogger.js';
+import { IEventEmitter } from '../services/IEventEmitter.js';
+import { EventTypes } from '../../domain/events/EventTypes.js';
 
 /**
  * アプリケーションコントローラークラス
@@ -27,7 +31,15 @@ export class AppController {
     // オプションの依存関係
     this.recordSessionUseCase = dependencies.recordSessionUseCase || null;
     this.replaySessionUseCase = dependencies.replaySessionUseCase || null;
+    this.logService = dependencies.logService || null;
     this.settingsRepository = dependencies.settingsRepository || null;
+
+    // デバイスリストViewModel（オプション）
+    this.deviceListViewModel = dependencies.deviceListViewModel || null;
+
+    // UIコンポーネント
+    this.logManagerComponent = null;
+    this.playbackControlsComponent = null;
 
     // 内部状態
     this.updateInterval = null;
@@ -35,8 +47,14 @@ export class AppController {
     this.recordingEnabled = false;
     this.replayingEnabled = false;
 
-    // ロガー
-    this.logger = AppLogger.createLogger('AppController');
+    // インターフェースを介した依存（依存性逆転の原則を適用）
+    this.eventEmitter = dependencies.eventEmitter || null;
+    this.logger = dependencies.logger || {
+      debug: () => {},
+      info: () => {},
+      warn: () => {},
+      error: () => {}
+    };
 
     // 設定
     this.options = {
@@ -68,13 +86,32 @@ export class AppController {
         await this._connectWebSocket();
       }
 
-      // 3. デバイス値のモニタリング開始
+      // 3. デバイスリストViewModelの初期化（最優先で実行）
+      this._initializeDeviceListViewModel();
+
+      // デバイスリストViewModelが初期化されたかチェック
+      if (!this.deviceListViewModel) {
+        this.logger.warn('DeviceListViewModel initialization failed, will try to create one');
+        // DeviceListViewModelが存在しない場合、作成を試みる
+        this._createDeviceListViewModel();
+      }
+
+      // 4. デバイス値のモニタリング開始
       if (this.monitorUseCase) {
         this.startMonitoring();
       }
 
+      // 5. ログ管理コンポーネントの初期化（ある場合）
+      this._initializeLogComponents();
+
       // アプリケーション起動イベントを発行
-      EventBus.emit('appStarted', { timestamp: Date.now() });
+      if (this.eventEmitter) {
+        this.eventEmitter.emit('appStarted', { timestamp: Date.now() });
+        // 新しいイベント命名規則でも発行
+        if (typeof EventTypes !== 'undefined' && EventTypes.APP_STARTED) {
+          this.eventEmitter.emit(EventTypes.APP_STARTED, { timestamp: Date.now() });
+        }
+      }
 
       this.logger.info('Application started successfully');
       return true;
@@ -211,27 +248,42 @@ export class AppController {
    * @private
    */
   _setupEventHandlers() {
-    // デバイスの接続イベント
-    EventBus.on('deviceConnected', this._handleDeviceConnected.bind(this));
+    if (!this.eventEmitter) {
+      this.logger.warn('EventEmitter not available for event handlers');
+      return;
+    }
 
-    // デバイスの切断イベント
-    EventBus.on('deviceDisconnected', this._handleDeviceDisconnected.bind(this));
+    // メモリリーク防止のためにバインドされたハンドラーを保存
+    this.boundHandlers = {
+      deviceConnected: this._handleDeviceConnected.bind(this),
+      deviceDisconnected: this._handleDeviceDisconnected.bind(this),
+      deviceUpdated: this._handleDeviceUpdated.bind(this),
+      deviceValueUpdated: this._handleDeviceValueUpdated.bind(this),
+      deviceError: this._handleDeviceError.bind(this),
+      devicesReset: this._handleDevicesReset.bind(this),
+      windowResize: this._handleWindowResize.bind(this)
+    };
 
-    // デバイスの更新イベント
-    EventBus.on('deviceUpdated', this._handleDeviceUpdated.bind(this));
+    // 新しいイベント命名規則を使用してイベントリスナーを登録
+    // owner としてコントローラー自身を指定してメモリリーク対策
+    this.eventEmitter.on(EventTypes.DEVICE_CONNECTED, this.boundHandlers.deviceConnected, this);
+    this.eventEmitter.on(EventTypes.DEVICE_DISCONNECTED, this.boundHandlers.deviceDisconnected, this);
+    this.eventEmitter.on(EventTypes.DEVICE_UPDATED, this.boundHandlers.deviceUpdated, this);
+    this.eventEmitter.on(EventTypes.DEVICE_VALUE_UPDATED, this.boundHandlers.deviceValueUpdated, this);
+    this.eventEmitter.on(EventTypes.DEVICE_ERROR, this.boundHandlers.deviceError, this);
+    this.eventEmitter.on(EventTypes.DEVICES_RESET, this.boundHandlers.devicesReset, this);
 
-    // デバイスの値更新イベント
-    EventBus.on('deviceValueUpdated', this._handleDeviceValueUpdated.bind(this));
-
-    // デバイスのエラーイベント
-    EventBus.on('deviceError', this._handleDeviceError.bind(this));
-
-    // すべてのデバイスリセットイベント
-    EventBus.on('devicesReset', this._handleDevicesReset.bind(this));
+    // 後方互換性のために古い命名規則のイベントにもリスナーを登録
+    this.eventEmitter.on('deviceConnected', this.boundHandlers.deviceConnected, this);
+    this.eventEmitter.on('deviceDisconnected', this.boundHandlers.deviceDisconnected, this);
+    this.eventEmitter.on('deviceUpdated', this.boundHandlers.deviceUpdated, this);
+    this.eventEmitter.on('deviceValueUpdated', this.boundHandlers.deviceValueUpdated, this);
+    this.eventEmitter.on('deviceError', this.boundHandlers.deviceError, this);
+    this.eventEmitter.on('devicesReset', this.boundHandlers.devicesReset, this);
 
     // ウィンドウのリサイズイベント
     if (typeof window !== 'undefined') {
-      window.addEventListener('resize', this._handleWindowResize.bind(this));
+      window.addEventListener('resize', this.boundHandlers.windowResize);
     }
 
     this.logger.debug('Event handlers setup complete');
@@ -248,28 +300,66 @@ export class AppController {
 
     // デバイスの状態を取得して更新
     this.deviceService.getDeviceInfo(deviceId).then(deviceInfo => {
-      if (!deviceInfo || !deviceInfo.device) return;
+      if (!deviceInfo || !deviceInfo.device) {
+        this.logger.warn(`No device info available for ${deviceId}`);
+        return;
+      }
 
       const device = deviceInfo.device;
       const deviceIndex = this.meterViewModel.getOrAssignDeviceIndex(deviceId);
 
       if (deviceIndex >= 0) {
+        // MeterViewModelを更新
+        this.logger.debug(`Updating MeterViewModel for device ${deviceId} at index ${deviceIndex}`);
+
+        // 名前の設定
         this.meterViewModel.setName(deviceIndex, device.name);
 
+        // アイコンの設定（存在する場合）
         if (device.iconUrl) {
           this.meterViewModel.setIcon(deviceIndex, device.iconUrl);
         }
 
+        // 接続状態を明示的に更新
+        this.meterViewModel.state.connected[deviceIndex] = true;
+
+        // 値の設定（存在する場合）
         if (deviceInfo.value) {
           const value = deviceInfo.value.normalizedValue || deviceInfo.value.rawValue;
           if (value !== null && value !== undefined) {
             this.meterViewModel.setValue(deviceIndex, value, true);
+            this.logger.debug(`Set value ${value} for device ${deviceId}`);
           }
         }
+
+        // 明示的に状態変更を通知
+        this.meterViewModel._notifyChange();
+
+        // DeviceListViewModelも更新（存在する場合）
+        this._updateDeviceListViewModel();
+      } else {
+        this.logger.error(`Failed to assign index for device ${deviceId}`);
       }
     }).catch(error => {
       this.logger.error(`Error handling device connected event for ${deviceId}:`, error);
     });
+  }
+
+  /**
+   * DeviceListViewModelの更新
+   * @private
+   */
+  _updateDeviceListViewModel() {
+    if (this.deviceListViewModel && typeof this.deviceListViewModel.updateDeviceList === 'function') {
+      this.getAllDevices(true).then(devices => {
+        this.logger.debug(`Updating DeviceListViewModel with ${devices.length} devices`);
+        this.deviceListViewModel.updateDeviceList(devices);
+      }).catch(error => {
+        this.logger.warn(`Failed to update DeviceListViewModel: ${error.message}`);
+      });
+    } else {
+      this.logger.debug('DeviceListViewModel not available for update');
+    }
   }
 
   /**
@@ -285,6 +375,25 @@ export class AppController {
     if (deviceIndex >= 0) {
       // ViewModelで接続状態を更新
       this.meterViewModel.setValue(deviceIndex, null, false);
+
+      // 接続状態を明示的に更新
+      this.meterViewModel.state.connected[deviceIndex] = false;
+
+      // 明示的に状態変更を通知
+      this.meterViewModel._notifyChange();
+
+      // DeviceListViewModelも更新
+      this._updateDeviceListViewModel();
+    } else {
+      this.logger.warn(`Device ${deviceId} not found in MeterViewModel, cannot update disconnect state`);
+    }
+
+    // DeviceServiceにも切断を通知（必要に応じて）
+    if (this.deviceService && typeof this.deviceService.disconnectDevice === 'function') {
+      this.deviceService.disconnectDevice(deviceId, 'event_disconnected')
+        .catch(error => {
+          this.logger.warn(`Failed to notify DeviceService about disconnect: ${error.message}`);
+        });
     }
   }
 
@@ -299,17 +408,54 @@ export class AppController {
 
     if (!device) return;
 
-    const deviceIndex = this.meterViewModel.getDeviceIndex(deviceId);
-    if (deviceIndex >= 0) {
-      // 名前の更新
-      if (device.name) {
-        this.meterViewModel.setName(deviceIndex, device.name);
+    // デバイスがViewModelに存在するか確認
+    let deviceIndex = this.meterViewModel.getDeviceIndex(deviceId);
+
+    // 存在しない場合は新規に割り当て
+    if (deviceIndex < 0) {
+      this.logger.debug(`Device ${deviceId} not found in ViewModel, assigning new index`);
+      deviceIndex = this.meterViewModel.getOrAssignDeviceIndex(deviceId);
+
+      if (deviceIndex < 0) {
+        this.logger.error(`Failed to assign index for device ${deviceId}`);
+        return;
       }
 
-      // アイコンの更新
-      if (device.iconUrl) {
-        this.meterViewModel.setIcon(deviceIndex, device.iconUrl);
-      }
+      // 接続状態を設定
+      this.meterViewModel.state.connected[deviceIndex] = true;
+      this.logger.debug(`Assigned new index ${deviceIndex} for device ${deviceId}`);
+    }
+
+    // 名前の更新
+    if (device.name) {
+      this.logger.debug(`Setting name for device ${deviceId}: ${device.name}`);
+      this.meterViewModel.setName(deviceIndex, device.name);
+    }
+
+    // アイコンの更新
+    if (device.iconUrl) {
+      this.logger.debug(`Setting icon for device ${deviceId}`);
+      this.meterViewModel.setIcon(deviceIndex, device.iconUrl);
+    }
+
+    // デバイス情報をDeviceServiceにも反映（必要に応じて）
+    if (this.deviceService && typeof this.deviceService.updateDeviceInfo === 'function') {
+      this.deviceService.updateDeviceInfo(deviceId, {
+        name: device.name,
+        iconUrl: device.iconUrl
+      }).catch(error => {
+        this.logger.warn(`Failed to update device info in DeviceService: ${error.message}`);
+      });
+    }
+
+    // DeviceListViewModelも更新（存在する場合）
+    if (this.deviceListViewModel && typeof this.deviceListViewModel.updateDeviceList === 'function') {
+      // 現在のデバイス一覧を取得して更新
+      this.getAllDevices(true).then(devices => {
+        this.deviceListViewModel.updateDeviceList(devices);
+      }).catch(error => {
+        this.logger.warn(`Failed to update DeviceListViewModel: ${error.message}`);
+      });
     }
   }
 
@@ -327,6 +473,18 @@ export class AppController {
     }
 
     this.logger.debug(`Device value updated event for ${deviceId}:`, value);
+
+    // ログ再生中の場合は、通常のデバイス値更新を無視する（競合を防ぐため）
+    if (this.replayingEnabled) {
+      // イベント自体がログ再生から来ているか確認（データソースを確認）
+      const isReplayEvent = event.source === 'replay' ||
+                            (event.metadata && event.metadata.source === 'replay');
+
+      if (!isReplayEvent) {
+        this.logger.debug(`Ignoring live device update during replay for device ${deviceId}`);
+        return; // 再生中で、かつ通常のデバイス値更新なら処理せずに終了
+      }
+    }
 
     // デバイスIDからインデックスを取得
     let deviceIndex = this.meterViewModel.getDeviceIndex(deviceId);
@@ -388,8 +546,8 @@ export class AppController {
       }
     }
 
-    // デバッグログ
-    this.logger.debug(`Setting value for device ${deviceId} (index ${deviceIndex}):`, {
+    // デバッグログ（現在の処理モードを含める）
+    this.logger.debug(`Setting value for device ${deviceId} (index ${deviceIndex}, mode: ${this.replayingEnabled ? 'replay' : 'live'}):`, {
       normalizedValue,
       rawValue,
       connected: true
@@ -484,7 +642,9 @@ export class AppController {
     this.monitorUseCase.startMonitoring(this.options.monitorInterval);
 
     // イベント通知
-    EventBus.emit('monitoringStarted', { interval: this.options.monitorInterval });
+    if (this.eventEmitter) {
+      this.eventEmitter.emit('monitoringStarted', { interval: this.options.monitorInterval });
+    }
 
     return true;
   }
@@ -505,7 +665,9 @@ export class AppController {
     this.monitorUseCase.stopMonitoring();
 
     // イベント通知
-    EventBus.emit('monitoringStopped', {});
+    if (this.eventEmitter) {
+      this.eventEmitter.emit('monitoringStopped', {});
+    }
 
     return true;
   }
@@ -640,6 +802,15 @@ export class AppController {
         // デバイスインデックスを確実に割り当てる
         const deviceIndex = this.meterViewModel.getOrAssignDeviceIndex(deviceId);
         this.logger.info(`Assigned device ${deviceId} to index ${deviceIndex}`);
+
+        if (deviceIndex >= 0) {
+          // 接続状態と表示状態を確実に設定
+          this.meterViewModel.state.connected[deviceIndex] = true;
+          this.meterViewModel.setVisible(deviceIndex, true);
+
+          // 初期値を仮で設定（表示が確実にされるように）
+          this.meterViewModel.setValue(deviceIndex, 50, true);
+        }
       }
 
       // デバイス情報の設定（アイコンや名前）
@@ -680,8 +851,32 @@ export class AppController {
         this.logger.warn('No device info in session metadata');
       }
 
-      // 再生開始前にまだ一度通知を行う
+      // 再生開始前にすべてのデバイスの接続状態を確認
+      // deviceIdsInEntriesを使ってすべてのデバイスを最終確認
+      this.logger.info('Final device connection check before starting playback');
+      for (const deviceId of deviceIdsInEntries) {
+        const deviceIndex = this.meterViewModel.getDeviceIndex(deviceId);
+        if (deviceIndex >= 0) {
+          // 接続状態と表示状態を再度強制的に設定
+          this.meterViewModel.state.connected[deviceIndex] = true;
+          this.meterViewModel.setVisible(deviceIndex, true);
+
+          this.logger.info(`Final check: Device ${deviceId} (index ${deviceIndex}) is connected and visible`);
+        }
+      }
+
+      // 再生開始前に2回通知を行う（確実に更新されるように）
       this.meterViewModel._notifyChange();
+      setTimeout(() => this.meterViewModel._notifyChange(), 0);
+
+      // 再生コントロールの初期化（存在すれば）
+      if (!this.playbackControlsComponent) {
+        const playbackControlsContainerId = 'playback-controls-container';
+        const container = document.getElementById(playbackControlsContainerId);
+        if (container) {
+          this._initializePlaybackControls(playbackControlsContainerId);
+        }
+      }
 
       // 再生開始
       this.replaySessionUseCase.play();
@@ -720,6 +915,36 @@ export class AppController {
   }
 
   /**
+   * 再生の一時停止
+   * @returns {boolean} 成功したかどうか
+   */
+  pauseReplay() {
+    if (!this.replayingEnabled || !this.replaySessionUseCase) {
+      return false;
+    }
+
+    this.logger.info('Pausing replay');
+
+    // 再生一時停止
+    return this.replaySessionUseCase.pause();
+  }
+
+  /**
+   * 再生の再開
+   * @returns {boolean} 成功したかどうか
+   */
+  resumeReplay() {
+    if (!this.replayingEnabled || !this.replaySessionUseCase) {
+      return false;
+    }
+
+    this.logger.info('Resuming replay');
+
+    // 再生再開
+    return this.replaySessionUseCase.play();
+  }
+
+  /**
    * 名前の設定
    * @param {string} deviceId デバイスID
    * @param {string} name デバイス名
@@ -736,11 +961,43 @@ export class AppController {
     const success = await this.deviceService.setDeviceName(deviceId, name);
 
     if (success) {
-      // ViewModelも更新
+      // MeterViewModelを更新
       const deviceIndex = this.meterViewModel.getDeviceIndex(deviceId);
       if (deviceIndex >= 0) {
         this.meterViewModel.setName(deviceIndex, name);
+
+        // 明示的に状態変更を通知
+        this.meterViewModel._notifyChange();
+        this.logger.debug(`Device name updated in MeterViewModel and notification sent: ${deviceId} -> ${name}`);
       }
+
+      // DeviceListViewModelも更新（存在する場合）
+      this._updateDeviceListViewModel();
+
+      // 変更イベントを発行して他のコンポーネントに通知（オーバーレイウィンドウなど）
+      if (this.eventEmitter) {
+        this.logger.debug('Emitting device updated event to propagate name change');
+        this.eventEmitter.emit(EventTypes.DEVICE_UPDATED, {
+          deviceId,
+          device: {
+            id: deviceId,
+            name: name,
+            // 他の既存のプロパティを含める
+            iconUrl: this.deviceService.getDeviceIconUrl?.(deviceId)
+          }
+        });
+
+        // 後方互換性のため
+        this.eventEmitter.emit('deviceUpdated', {
+          deviceId,
+          device: {
+            id: deviceId,
+            name: name,
+            iconUrl: this.deviceService.getDeviceIconUrl?.(deviceId)
+          }
+        });
+      }
+
       return true;
     }
 
@@ -764,15 +1021,117 @@ export class AppController {
     const success = await this.deviceService.setDeviceIcon(deviceId, iconUrl);
 
     if (success) {
-      // ViewModelも更新
+      // MeterViewModelを更新
       const deviceIndex = this.meterViewModel.getDeviceIndex(deviceId);
       if (deviceIndex >= 0) {
         this.meterViewModel.setIcon(deviceIndex, iconUrl);
+
+        // 明示的に状態変更を通知
+        this.meterViewModel._notifyChange();
+        this.logger.debug(`Device icon updated in MeterViewModel and notification sent: ${deviceId}`);
       }
+
+      // DeviceListViewModelも更新（存在する場合）
+      this._updateDeviceListViewModel();
+
+      // 変更イベントを発行して他のコンポーネントに通知（オーバーレイウィンドウなど）
+      if (this.eventEmitter) {
+        this.logger.debug('Emitting device updated event to propagate icon change');
+        this.eventEmitter.emit(EventTypes.DEVICE_UPDATED, {
+          deviceId,
+          device: {
+            id: deviceId,
+            iconUrl: iconUrl,
+            // 他の既存のプロパティを含める
+            name: this.deviceService.getDeviceName?.(deviceId)
+          }
+        });
+
+        // 後方互換性のため
+        this.eventEmitter.emit('deviceUpdated', {
+          deviceId,
+          device: {
+            id: deviceId,
+            iconUrl: iconUrl,
+            name: this.deviceService.getDeviceName?.(deviceId)
+          }
+        });
+      }
+
       return true;
     }
 
     return false;
+  }
+
+  /**
+   * デバイスの表示/非表示を設定
+   * @param {string} deviceId デバイスID
+   * @param {boolean} isVisible 表示するかどうか
+   * @returns {Promise<boolean>} 成功したかどうか
+   */
+  async setDeviceVisibility(deviceId, isVisible) {
+    if (!deviceId) {
+      return false;
+    }
+
+    this.logger.debug(`Setting device visibility: ${deviceId} -> ${isVisible ? 'visible' : 'hidden'}`);
+
+    try {
+      // 現在のデバイス表示状態を取得
+      const deviceIndex = this.meterViewModel.getDeviceIndex(deviceId);
+      if (deviceIndex >= 0) {
+        // MeterViewModel経由でデバイス表示状態を更新
+        this.meterViewModel.setVisible(deviceIndex, isVisible);
+
+        // 明示的に状態変更を通知
+        this.meterViewModel._notifyChange();
+        this.logger.debug(`Device visibility updated in MeterViewModel and notification sent: ${deviceId} -> ${isVisible ? 'visible' : 'hidden'}`);
+
+        // デバイスサービスが実装されていれば、そちらにも通知
+        if (this.deviceService && typeof this.deviceService.setDeviceVisibility === 'function') {
+          await this.deviceService.setDeviceVisibility(deviceId, isVisible);
+          this.logger.debug(`Device visibility updated in DeviceService: ${deviceId} -> ${isVisible ? 'visible' : 'hidden'}`);
+        }
+
+        // DeviceListViewModelも更新（存在する場合）
+        this._updateDeviceListViewModel();
+
+        // 変更イベントを発行して他のコンポーネントに通知（オーバーレイウィンドウなど）
+        if (this.eventEmitter) {
+          this.logger.debug('Emitting device updated event to propagate visibility change');
+          this.eventEmitter.emit(EventTypes.DEVICE_UPDATED, {
+            deviceId,
+            device: {
+              id: deviceId,
+              visible: isVisible,
+              // 他の既存のプロパティを含める
+              name: this.deviceService.getDeviceName?.(deviceId),
+              iconUrl: this.deviceService.getDeviceIconUrl?.(deviceId)
+            }
+          });
+
+          // 後方互換性のため
+          this.eventEmitter.emit('deviceUpdated', {
+            deviceId,
+            device: {
+              id: deviceId,
+              visible: isVisible,
+              name: this.deviceService.getDeviceName?.(deviceId),
+              iconUrl: this.deviceService.getDeviceIconUrl?.(deviceId)
+            }
+          });
+        }
+
+        return true;
+      }
+
+      this.logger.warn(`Device with ID ${deviceId} not found in MeterViewModel`);
+      return false;
+    } catch (error) {
+      this.logger.error(`Error setting device visibility for ${deviceId}:`, error);
+      return false;
+    }
   }
 
   /**
@@ -782,16 +1141,457 @@ export class AppController {
   async resetDevices() {
     this.logger.info('Resetting all devices');
 
-    // すべてのデバイスをリセット
-    const success = await this.deviceService.resetAllDevices();
+    try {
+      // すべてのデバイスをリセット
+      const success = await this.deviceService.resetAllDevices();
 
-    if (success) {
-      // ViewModelもリセット
-      this.meterViewModel.reset();
-      return true;
+      if (success) {
+        // MeterViewModelをリセット
+        this.meterViewModel.reset();
+        this.logger.debug('MeterViewModel reset successful');
+
+        // DeviceListViewModelもリセット（存在する場合）
+        if (this.deviceListViewModel && typeof this.deviceListViewModel.updateDeviceList === 'function') {
+          // 空の配列で更新することでリセット
+          this.deviceListViewModel.updateDeviceList([]);
+          this.logger.debug('DeviceListViewModel reset successful');
+        } else {
+          this.logger.debug('DeviceListViewModel not available for reset');
+        }
+
+        // イベント発行（新しい命名規則）
+        if (this.eventEmitter) {
+          this.logger.debug('Emitting device reset events');
+          this.eventEmitter.emit(EventTypes.DEVICES_RESET, {
+            timestamp: Date.now()
+          });
+
+          // 後方互換性のため
+          this.eventEmitter.emit('devicesReset', {
+            timestamp: Date.now()
+          });
+        }
+
+        return true;
+      } else {
+        this.logger.warn('Device service reset returned false');
+        return false;
+      }
+    } catch (error) {
+      this.logger.error('Error resetting devices:', error);
+      return false;
+    }
+  }
+
+  /**
+   * すべてのデバイスを取得
+   * @param {boolean} connectedOnly 接続済みデバイスのみ取得するかどうか
+   * @returns {Promise<Array>} デバイスの配列
+   */
+  async getAllDevices(connectedOnly = false) {
+    if (!this.deviceService) {
+      this.logger.warn('DeviceService not available for getAllDevices');
+      return [];
+    }
+    return await this.deviceService.getAllDevices(connectedOnly);
+  }
+
+  /**
+   * ログコンポーネントの初期化
+   * @private
+   */
+  _initializeLogComponents() {
+    // ログ管理と再生が可能な場合のみ
+    if (this.logService && this.replaySessionUseCase) {
+      this.logger.debug('Initializing log components');
+
+      try {
+        // ログ管理コンポーネントの初期化
+        const logManagerContainerId = 'log-manager-container';
+        if (document.getElementById(logManagerContainerId)) {
+          this.logger.debug('Initializing LogManagerComponent');
+          this.logManagerComponent = new LogManagerComponent(
+            logManagerContainerId,
+            this,
+            this.logService
+          );
+        } else {
+          this.logger.debug(`LogManagerComponent container not found: ${logManagerContainerId}`);
+        }
+
+        // ログ再生コンポーネントの初期表示を非表示に設定（動的に生成されるコンポーネント）
+        const logReplayComponent = document.getElementById('log-replay-component-dynamic') ||
+                                  document.querySelector('.log-replay-component');
+        if (logReplayComponent) {
+          this.logger.debug('Setting log replay component to hidden');
+          logReplayComponent.style.display = 'none';
+        }
+
+        // 再生コントロールコンポーネントは動的に作成される
+        // この時点では初期化しない
+      } catch (error) {
+        this.logger.error('Error initializing log components:', error);
+      }
+    }
+  }
+
+  /**
+   * 再生コントロールコンポーネントの初期化
+   * @private
+   * @param {string} containerId コンテナID
+   * @returns {PlaybackControlsComponent|null} 初期化されたコンポーネントまたはnull
+   */
+  _initializePlaybackControls(containerId) {
+    if (!this.replaySessionUseCase || !containerId) {
+      this.logger.warn('Cannot initialize playback controls: missing dependencies or container');
+      return null;
     }
 
-    return false;
+    try {
+      // 再生コントロールのコンテナを取得
+      const container = document.getElementById(containerId);
+      if (!container) {
+        this.logger.error(`Playback controls container not found: ${containerId}`);
+        return null;
+      }
+
+      // コンテナを確実に表示状態に設定
+      container.style.display = 'block';
+      container.style.visibility = 'visible';
+      container.style.opacity = '1';
+
+      this.logger.debug(`Initializing PlaybackControlsComponent in ${containerId}`);
+
+      // 既存のコンポーネントがある場合は削除
+      if (this.playbackControlsComponent) {
+        try {
+          if (typeof this.playbackControlsComponent.destroy === 'function') {
+            this.playbackControlsComponent.destroy();
+            this.logger.debug('Destroyed existing PlaybackControlsComponent');
+          }
+        } catch (destroyError) {
+          this.logger.warn('Error destroying existing PlaybackControlsComponent:', destroyError);
+        }
+      }
+
+      // 新しいPlaybackControlsComponentを作成
+      this.playbackControlsComponent = new PlaybackControlsComponent(
+        containerId,
+        this,
+        this.replaySessionUseCase
+      );
+
+      // 初期化成功を確認
+      if (this.playbackControlsComponent && this.playbackControlsComponent.isInitialized) {
+        // 明示的に表示
+        if (typeof this.playbackControlsComponent.show === 'function') {
+          this.playbackControlsComponent.show();
+        }
+
+        this.logger.info('PlaybackControlsComponent initialized and shown successfully');
+
+        // 再生コントロール要素を取得して確実に表示
+        const playbackControlsEl = document.getElementById('playback-controls');
+        if (playbackControlsEl) {
+          playbackControlsEl.style.display = 'block';
+          playbackControlsEl.style.visibility = 'visible';
+          playbackControlsEl.style.opacity = '1';
+        }
+
+        return this.playbackControlsComponent;
+      } else {
+        this.logger.warn('PlaybackControlsComponent created but not properly initialized');
+        return null;
+      }
+    } catch (error) {
+      this.logger.error('Error initializing PlaybackControlsComponent:', error);
+      return null;
+    }
+  }
+
+  /**
+   * デバイスリストViewModelの初期化
+   * @private
+   */
+  _initializeDeviceListViewModel() {
+    if (this.deviceListViewModel) {
+      this.logger.debug('DeviceListViewModel already initialized');
+      return;
+    }
+
+    try {
+      // コンテナセレクタの設定
+      const containerSelector = '#device-inputs';
+      const noDevicesSelector = '#no-devices-message';
+
+      // ViewModelの作成（依存性注入によるインスタンス化）
+      // イベントエミッタを渡して初期化
+      this.deviceListViewModel = new DeviceListViewModel({
+        containerSelector,
+        noDevicesSelector
+      }, this.eventEmitter, this.logger);
+
+      // グローバルアクセスのためにwindowオブジェクトに保存（後方互換性のため）
+      if (typeof window !== 'undefined') {
+        window.deviceListViewModel = this.deviceListViewModel;
+      }
+
+      // 初期化
+      const initialized = this.deviceListViewModel.initialize();
+      if (initialized) {
+        this.logger.debug('DeviceListViewModel initialized successfully');
+      } else {
+        this.logger.warn('DeviceListViewModel initialized with warnings');
+      }
+
+      // イベントリスナーの設定
+      this._setupDeviceListViewModelEvents();
+    } catch (error) {
+      this.logger.error('Error initializing DeviceListViewModel:', error);
+    }
+  }
+
+  /**
+   * DeviceListViewModelの新規作成（フォールバック）
+   * 初期化に失敗した場合に呼び出される
+   * @private
+   */
+  _createDeviceListViewModel() {
+    try {
+      this.logger.debug('Attempting to create DeviceListViewModel as fallback');
+
+      // DeviceListViewModelクラスが利用可能かチェック
+      if (typeof DeviceListViewModel === 'undefined') {
+        // DeviceListViewModelをインポート
+        import('../viewmodels/DeviceListViewModel.js')
+          .then(module => {
+            const DeviceListViewModelClass = module.DeviceListViewModel;
+            // インスタンス作成
+            this._createDeviceListViewModelInstance(DeviceListViewModelClass);
+          })
+          .catch(error => {
+            this.logger.error('Failed to import DeviceListViewModel:', error);
+          });
+      } else {
+        // DeviceListViewModelが既に利用可能な場合
+        this._createDeviceListViewModelInstance(DeviceListViewModel);
+      }
+    } catch (error) {
+      this.logger.error('Failed to create DeviceListViewModel:', error);
+    }
+  }
+
+  /**
+   * DeviceListViewModelのインスタンスを作成
+   * @param {Class} DeviceListViewModelClass DeviceListViewModelクラス
+   * @private
+   */
+  _createDeviceListViewModelInstance(DeviceListViewModelClass) {
+    try {
+      // 基本オプション
+      const options = {
+        containerSelector: '#device-inputs',
+        noDevicesSelector: '#no-devices-message'
+      };
+
+      // インスタンス化
+      this.deviceListViewModel = new DeviceListViewModelClass(
+        options,
+        this.eventEmitter,
+        this.logger
+      );
+
+      // 初期化
+      const initialized = this.deviceListViewModel.initialize();
+      if (initialized) {
+        this.logger.debug('DeviceListViewModel created and initialized successfully as fallback');
+        // イベントリスナーの設定
+        this._setupDeviceListViewModelEvents();
+      } else {
+        this.logger.warn('DeviceListViewModel created but initialization returned false');
+      }
+    } catch (error) {
+      this.logger.error('Error creating DeviceListViewModel instance:', error);
+    }
+  }
+
+  /**
+   * DeviceListViewModel用のイベントリスナーを設定
+   * @private
+   */
+  _setupDeviceListViewModelEvents() {
+    if (!this.deviceListViewModel || !this.eventEmitter) return;
+
+    // デバイスの可視性変更イベント（新しいイベント型）
+    this.eventEmitter.on(EventTypes.DEVICE_VISIBILITY_CHANGED, async (data) => {
+      if (!data || !data.deviceId) return;
+
+      try {
+        // 現在のデバイス表示状態を取得
+        const deviceIndex = this.meterViewModel.getDeviceIndex(data.deviceId);
+        if (deviceIndex >= 0) {
+          // デバッグ：更新前の状態
+          this.logger.debug(`Visibility BEFORE: ${data.deviceId} (index ${deviceIndex}) -> ${this.meterViewModel.state.visible[deviceIndex]}`);
+
+          // MeterViewModel経由でデバイス表示状態を更新
+          this.meterViewModel.setVisible(deviceIndex, data.isVisible);
+
+          // デバッグ：更新後の状態
+          this.logger.debug(`Visibility AFTER: ${data.deviceId} (index ${deviceIndex}) -> ${this.meterViewModel.state.visible[deviceIndex]}`);
+
+          // デバイスサービスが実装されていれば、そちらにも通知
+          if (this.deviceService && typeof this.deviceService.setDeviceVisibility === 'function') {
+            await this.deviceService.setDeviceVisibility(data.deviceId, data.isVisible);
+          }
+
+          this.logger.debug(`Device visibility changed: ${data.deviceId} -> ${data.isVisible ? 'visible' : 'hidden'}`);
+
+          // プレビューの更新を強制
+          this.meterViewModel._notifyChange();
+
+          // DeviceListViewModelも更新（存在する場合）
+          this._updateDeviceListViewModel();
+        }
+      } catch (error) {
+        this.logger.error(`Error handling device visibility change for ${data.deviceId}:`, error);
+      }
+    });
+
+    // デバイスの可視性変更イベント（後方互換性用）
+    this.eventEmitter.on('deviceVisibilityChange', async (data) => {
+      if (!data || !data.deviceId) return;
+
+      try {
+        // 現在のデバイス表示状態を取得
+        const deviceIndex = this.meterViewModel.getDeviceIndex(data.deviceId);
+        if (deviceIndex >= 0) {
+          // MeterViewModel経由でデバイス表示状態を更新
+          this.meterViewModel.setVisible(deviceIndex, data.isVisible);
+
+          // デバイスサービスが実装されていれば、そちらにも通知
+          if (this.deviceService && typeof this.deviceService.setDeviceVisibility === 'function') {
+            await this.deviceService.setDeviceVisibility(data.deviceId, data.isVisible);
+          }
+
+          this.logger.debug(`Device visibility changed (legacy): ${data.deviceId} -> ${data.isVisible ? 'visible' : 'hidden'}`);
+
+          // プレビューの更新を強制
+          this.meterViewModel._notifyChange();
+
+          // DeviceListViewModelも更新（存在する場合）
+          this._updateDeviceListViewModel();
+        }
+      } catch (error) {
+        this.logger.error(`Error handling device visibility change for ${data.deviceId}:`, error);
+      }
+    });
+
+    // デバイス名変更イベント
+    this.eventEmitter.on('deviceNameChange', async (data) => {
+      if (!data || !data.deviceId || !data.newName) return;
+
+      try {
+        // デバイス名を設定
+        await this.setDeviceName(data.deviceId, data.newName);
+        this.logger.debug(`Device name changed: ${data.deviceId} -> ${data.newName}`);
+      } catch (error) {
+        this.logger.error(`Error handling device name change for ${data.deviceId}:`, error);
+      }
+    });
+
+    // デバイスアイコン変更イベント
+    this.eventEmitter.on('deviceIconChange', async (data) => {
+      if (!data || !data.deviceId || !data.iconUrl) return;
+
+      try {
+        // デバイスアイコンを設定
+        await this.setDeviceIcon(data.deviceId, data.iconUrl);
+        this.logger.debug(`Device icon changed: ${data.deviceId}`);
+      } catch (error) {
+        this.logger.error(`Error handling device icon change for ${data.deviceId}:`, error);
+      }
+    });
+
+    this.logger.debug('DeviceListViewModel events setup complete');
+  }
+
+  /**
+   * オーバーレイウィンドウを開く
+   * @returns {boolean} 成功したかどうか
+   */
+  openOverlay() {
+    this.logger.info('Opening overlay window');
+
+    try {
+      // 現在のパスを取得してオーバーレイパラメータを追加
+      const overlayUrl = window.location.href.split('?')[0] + '?overlay=true';
+      const overlayWindow = window.open(overlayUrl, 'MeterOverlay', 'width=800,height=600');
+
+      if (!overlayWindow) {
+        this.logger.warn('Failed to open overlay window - popup might be blocked');
+        return false;
+      }
+
+      this.logger.info('Overlay window opened successfully');
+      return true;
+    } catch (error) {
+      this.logger.error('Error opening overlay window:', error);
+      return false;
+    }
+  }
+
+  /**
+   * オーバーレイモードを設定
+   * @param {boolean} isOverlay オーバーレイモードかどうか
+   * @returns {boolean} 成功したかどうか
+   */
+  setOverlayMode(isOverlay = true) {
+    this.logger.info(`Setting overlay mode to: ${isOverlay}`);
+
+    try {
+      // オーバーレイモードの内部状態を更新
+      if (!this.options) {
+        this.options = {};
+      }
+      this.options.isOverlayMode = isOverlay;
+
+      // MeterViewModelにオーバーレイモードを設定
+      if (this.meterViewModel) {
+        // MeterViewModelにオーバーレイモード設定メソッドがあれば使用
+        if (typeof this.meterViewModel.setOverlayMode === 'function') {
+          this.meterViewModel.setOverlayMode(isOverlay);
+        }
+        // なければ状態を直接設定
+        else if (this.meterViewModel.state) {
+          this.meterViewModel.state.isOverlayMode = isOverlay;
+          // 状態変更を通知
+          if (typeof this.meterViewModel._notifyChange === 'function') {
+            this.meterViewModel._notifyChange();
+          }
+        }
+      }
+
+      // MeterRendererにオーバーレイモードを設定
+      if (this.meterRenderer && typeof this.meterRenderer.setOverlayMode === 'function') {
+        this.meterRenderer.setOverlayMode(isOverlay);
+      }
+
+      // DeviceListViewModelにもオーバーレイモードを設定（存在する場合）
+      if (this.deviceListViewModel && typeof this.deviceListViewModel.setOverlayMode === 'function') {
+        this.deviceListViewModel.setOverlayMode(isOverlay);
+      }
+
+      // イベント発行（オプショナル）
+      if (this.eventEmitter) {
+        this.eventEmitter.emit('overlayModeChanged', { isOverlay });
+      }
+
+      this.logger.info(`Overlay mode set to: ${isOverlay}`);
+      return true;
+    } catch (error) {
+      this.logger.error('Error setting overlay mode:', error);
+      return false;
+    }
   }
 
   /**
@@ -832,18 +1632,53 @@ export class AppController {
       this.meterRenderer.dispose();
     }
 
-    // イベントリスナーの削除
-    EventBus.off('deviceConnected', this._handleDeviceConnected.bind(this));
-    EventBus.off('deviceDisconnected', this._handleDeviceDisconnected.bind(this));
-    EventBus.off('deviceUpdated', this._handleDeviceUpdated.bind(this));
-    EventBus.off('deviceValueUpdated', this._handleDeviceValueUpdated.bind(this));
-    EventBus.off('deviceError', this._handleDeviceError.bind(this));
-    EventBus.off('devicesReset', this._handleDevicesReset.bind(this));
+    // デバイスリストViewModelの解放
+    if (this.deviceListViewModel) {
+      // deviceListViewModelにdisposeメソッドがある場合は呼び出し
+      if (typeof this.deviceListViewModel.dispose === 'function') {
+        this.deviceListViewModel.dispose();
+      }
+      this.deviceListViewModel = null;
+    }
+
+    // ログコンポーネントの解放
+    if (this.playbackControlsComponent && this.playbackControlsComponent.destroy) {
+      this.playbackControlsComponent.destroy();
+      this.playbackControlsComponent = null;
+    }
+
+    // イベントリスナーの削除 - メモリリーク対策
+    if (this.eventEmitter) {
+      // 新しいイベントリスナー削除メソッドを使用
+      this.eventEmitter.removeListenersByOwner(this);
+
+      // バインドされたハンドラーが存在する場合は個別に削除（念のため）
+      if (this.boundHandlers) {
+        // 新しいイベント名の解除
+        this.eventEmitter.off(EventTypes.DEVICE_CONNECTED, this.boundHandlers.deviceConnected);
+        this.eventEmitter.off(EventTypes.DEVICE_DISCONNECTED, this.boundHandlers.deviceDisconnected);
+        this.eventEmitter.off(EventTypes.DEVICE_UPDATED, this.boundHandlers.deviceUpdated);
+        this.eventEmitter.off(EventTypes.DEVICE_VALUE_UPDATED, this.boundHandlers.deviceValueUpdated);
+        this.eventEmitter.off(EventTypes.DEVICE_ERROR, this.boundHandlers.deviceError);
+        this.eventEmitter.off(EventTypes.DEVICES_RESET, this.boundHandlers.devicesReset);
+
+        // 古いイベント名の解除
+        this.eventEmitter.off('deviceConnected', this.boundHandlers.deviceConnected);
+        this.eventEmitter.off('deviceDisconnected', this.boundHandlers.deviceDisconnected);
+        this.eventEmitter.off('deviceUpdated', this.boundHandlers.deviceUpdated);
+        this.eventEmitter.off('deviceValueUpdated', this.boundHandlers.deviceValueUpdated);
+        this.eventEmitter.off('deviceError', this.boundHandlers.deviceError);
+        this.eventEmitter.off('devicesReset', this.boundHandlers.devicesReset);
+      }
+    }
 
     // ウィンドウイベントリスナーの削除
-    if (typeof window !== 'undefined') {
-      window.removeEventListener('resize', this._handleWindowResize.bind(this));
+    if (typeof window !== 'undefined' && this.boundHandlers) {
+      window.removeEventListener('resize', this.boundHandlers.windowResize);
     }
+
+    // バインドされたハンドラーの参照を解放
+    this.boundHandlers = null;
 
     this.logger.info('Application disposed successfully');
   }

@@ -4,8 +4,10 @@
  * UIの状態を管理し、アプリケーション層とプレゼンテーション層の橋渡しをする
  */
 
+import { IEventEmitter } from '../services/IEventEmitter.js';
+import { ILogger } from '../services/ILogger.js';
 import { EventBus } from '../../infrastructure/services/EventBus.js';
-import { AppLogger } from '../../infrastructure/services/Logger.js';
+import { EventTypes } from '../../domain/events/EventTypes.js';
 
 /**
  * メーターのビューモデルクラス
@@ -14,16 +16,27 @@ export class MeterViewModel {
   /**
    * メーターのビューモデルを初期化
    * @param {Object} options オプション設定
+   * @param {IEventEmitter} eventEmitter イベントエミッター
+   * @param {ILogger} logger ロガー
    */
-  constructor(options = {}) {
+  constructor(options = {}, eventEmitter, logger) {
     this.options = {
       maxDevices: 6,                // 最大デバイス数
       interpolationTime: 200,       // 値の補間時間（ミリ秒）
       ...options
     };
 
-    // ロガー
-    this.logger = AppLogger.createLogger('MeterViewModel');
+    // インターフェースを通じた依存（依存性逆転の原則を適用）
+    this.eventEmitter = eventEmitter;
+    this.logger = logger || {
+      debug: () => {},
+      info: () => {},
+      warn: () => {},
+      error: () => {}
+    };
+
+    // 再生モードフラグ
+    this.isPlaybackMode = false;
 
     // 初期状態
     this.state = {
@@ -31,6 +44,7 @@ export class MeterViewModel {
       names: Array(this.options.maxDevices).fill(null),         // デバイス名
       icons: Array(this.options.maxDevices).fill(null),         // デバイスアイコン
       connected: Array(this.options.maxDevices).fill(false),    // 接続状態
+      visible: Array(this.options.maxDevices).fill(true),       // 表示状態（デフォルトは表示）
       lastUpdate: Array(this.options.maxDevices).fill(null),    // 最終更新時間
       tempDisconnected: Array(this.options.maxDevices).fill(false) // 一時的な切断状態
     };
@@ -46,6 +60,52 @@ export class MeterViewModel {
     this._startValues = Array(this.options.maxDevices).fill(null);
     this._startTime = Array(this.options.maxDevices).fill(null);
     this._interpolating = Array(this.options.maxDevices).fill(false);
+
+    // デバイス値の更新イベントと再生イベントを監視
+    EventBus.on(EventTypes.DEVICE_VALUE_UPDATED, (event) => {
+      if (!event || !event.deviceId) return;
+
+      const deviceId = event.deviceId;
+      const deviceIndex = this.getOrAssignDeviceIndex(deviceId);
+
+      if (deviceIndex >= 0 && event.value) {
+        // 通常のデバイス値更新の場合
+        this.logger.debug(`デバイス値更新イベント: ${deviceId}, インデックス: ${deviceIndex}`);
+        const value = this._extractNormalizedValue(event.value);
+        this.setValue(deviceIndex, value, true, 'device');
+      }
+    });
+
+    // 再生値専用のイベントリスナー
+    EventBus.on(EventTypes.DEVICE_VALUE_REPLAYED, (event) => {
+      if (!event || !event.deviceId) return;
+
+      const deviceId = event.deviceId;
+      const deviceIndex = this.getOrAssignDeviceIndex(deviceId);
+
+      if (deviceIndex >= 0 && event.value) {
+        // 再生データからの値更新の場合
+        this.logger.debug(`再生データ値更新イベント: ${deviceId}, インデックス: ${deviceIndex}`);
+        const value = this._extractNormalizedValue(event.value);
+        this.setValue(deviceIndex, value, true, 'replay');
+      }
+    });
+
+    // 再生モード状態管理（表示のみに使用）
+    EventBus.on('playbackStarted', () => {
+      this.logger.debug('再生開始イベントを受信しました');
+      this.isPlaybackMode = true;
+    });
+
+    EventBus.on('playbackStopped', () => {
+      this.logger.debug('再生停止イベントを受信しました');
+      this.isPlaybackMode = false;
+    });
+
+    EventBus.on('playbackCompleted', () => {
+      this.logger.debug('再生完了イベントを受信しました');
+      this.isPlaybackMode = false;
+    });
 
     // 補間の更新ループ
     this._setupInterpolationLoop();
@@ -111,13 +171,55 @@ export class MeterViewModel {
    * 注意: この関数はデバイスの値の設定と共に接続状態も管理します。
    * 値の更新があるたびに、デバイスが応答していると判断し、タイムアウト処理をリセットします。
    */
-  setValue(index, value, connected = true) {
+  /**
+   * 値オブジェクトからnormalizedValueを抽出
+   * @param {Object} valueObj 値オブジェクト
+   * @returns {number|null} 正規化された値
+   * @private
+   */
+  _extractNormalizedValue(valueObj) {
+    if (!valueObj) return null;
+
+    // 数値の場合はそのまま返す
+    if (typeof valueObj === 'number') {
+      return valueObj;
+    }
+
+    // normalizedValueプロパティがある場合
+    if (valueObj.normalizedValue !== undefined) {
+      return valueObj.normalizedValue;
+    }
+
+    // 古い形式のnormalizedプロパティがある場合
+    if (valueObj.normalized !== undefined) {
+      return valueObj.normalized;
+    }
+
+    // rawValueプロパティがある場合
+    if (valueObj.rawValue !== undefined) {
+      return valueObj.rawValue;
+    }
+
+    // 古い形式のrawプロパティがある場合
+    if (valueObj.raw !== undefined) {
+      return valueObj.raw;
+    }
+
+    // どれもない場合はnull
+    return null;
+  }
+
+  setValue(index, value, connected = true, source = null) {
     if (index < 0 || index >= this.options.maxDevices) {
       this.logger.warn(`Attempt to set value for invalid device index: ${index}`);
       return false;
     }
 
-    this.logger.debug(`Setting value for device index ${index}: value=${value}, connected=${connected}`);
+    // ソース情報をログに含める
+    this.logger.debug(`Setting value for device index ${index}: value=${value}, connected=${connected}, source=${source || 'unknown'}`);
+
+    // イベントソースは記録するがフィルタリングはしない
+    // このメソッドに到達するまでに、イベントリスナーがすでに適切に処理しています
 
     // 値の更新があるたびにリセット処理を行う（接続中のデバイス）
     if (connected) {
@@ -219,6 +321,46 @@ export class MeterViewModel {
   }
 
   /**
+   * デバイスの表示/非表示を設定
+   * @param {number} index デバイスインデックス
+   * @param {boolean} visible 表示するかどうか
+   * @returns {boolean} 成功したかどうか
+   */
+  setVisible(index, visible) {
+    this.logger.debug(`[DEBUG TOGGLE] setVisible called for index: ${index}, visible: ${visible}`);
+
+    // 型チェック
+    this.logger.debug(`[DEBUG TOGGLE] index type: ${typeof index}, visible type: ${typeof visible}`);
+
+    if (index < 0 || index >= this.options.maxDevices) {
+      this.logger.warn(`[DEBUG TOGGLE] Attempt to set visibility for invalid device index: ${index}`);
+      return false;
+    }
+
+    // 現在の状態をログ出力
+    this.logger.debug(`[DEBUG TOGGLE] Current state.visible array: ${JSON.stringify(this.state.visible)}`);
+    this.logger.debug(`[DEBUG TOGGLE] Current visibility for index ${index}: ${this.state.visible[index]}`);
+
+    // Boolean型の値に変換して一貫性を確保
+    const visibleBool = !!visible;
+    this.logger.debug(`[DEBUG TOGGLE] Converted visibleBool: ${visibleBool}`);
+
+    if (this.state.visible[index] !== visibleBool) {
+      this.logger.debug(`[DEBUG TOGGLE] Visibility changed: Setting visibility for device ${index} to ${visibleBool ? 'visible' : 'hidden'}`);
+      this.state.visible[index] = visibleBool;
+
+      // 更新後の状態をログ出力
+      this.logger.debug(`[DEBUG TOGGLE] Updated state.visible array: ${JSON.stringify(this.state.visible)}`);
+
+      this._notifyChange();
+      return true;
+    } else {
+      this.logger.debug(`[DEBUG TOGGLE] Visibility unchanged (already ${visibleBool ? 'visible' : 'hidden'}) for device ${index}`);
+    }
+    return false;
+  }
+
+  /**
    * リセット処理
    * すべてのデバイスの状態をリセット
    */
@@ -226,6 +368,7 @@ export class MeterViewModel {
     // 全デバイスの状態をリセット
     this.state.values = Array(this.options.maxDevices).fill(null);
     this.state.connected = Array(this.options.maxDevices).fill(false);
+    this.state.visible = Array(this.options.maxDevices).fill(true);
     this.state.lastUpdate = Array(this.options.maxDevices).fill(null);
     this.state.tempDisconnected = Array(this.options.maxDevices).fill(false);
 
@@ -323,7 +466,7 @@ export class MeterViewModel {
    * @returns {Function} リスナー削除関数
    */
   onChange(callback) {
-    return EventBus.on('meterViewModel:change', callback);
+    return this.eventEmitter.on('meterViewModel:change', callback);
   }
 
   /**
@@ -410,11 +553,9 @@ export class MeterViewModel {
    * @private
    */
   _notifyChange() {
-    this.logger.debug('Notifying state change', {
-      connectedCount: this.state.connected.filter(c => c).length,
-      valuesStatus: this.state.values.map(v => v !== null ? '値あり' : '値なし')
-    });
-    EventBus.emit('meterViewModel:change', { ...this.state });
+    // 冗長なログ出力を減らし、重要な状態変更のみログ出力する
+    this.logger.debug(`State change: ${this.state.connected.filter(c => c).length} devices connected`);
+    this.eventEmitter.emit('meterViewModel:change', { ...this.state });
   }
 
   /**

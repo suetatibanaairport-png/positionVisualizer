@@ -1,0 +1,315 @@
+/* ログ再生コンポーネント改善スタイル */
+
+/* 再生コンポーネント全体 */
+.log-replay-component {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid #334155;
+  border-radius: 8px;
+  margin-top: 16px;
+  padding: 16px;
+  transition: all 0.3s ease;
+  display: block;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+}
+
+/* ヘッダー部分 */
+.log-replay-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.log-replay-header h3 {
+  margin: 0;
+  font-size: 16px;
+  color: #5FADCF;
+  font-weight: 600;
+}
+
+/* 閉じるボタンを最適化 */
+.close-button {
+  width: 24px !important;
+  height: 24px !important;
+  max-width: 24px !important;
+  min-width: 24px !important;
+  border-radius: 50% !important;
+  background: rgba(127, 87, 184, 0.2) !important;
+  color: #ffffff !important;
+  border: 1px solid #7F57B8 !important;
+  font-size: 14px !important;
+  line-height: 1 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  padding: 0 !important;
+  transition: all 0.2s ease !important;
+  position: relative !important;
+  overflow: hidden !important;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2) !important;
+}
+
+.close-button:hover {
+  background: rgba(127, 87, 184, 0.4) !important;
+  transform: scale(1.1) !important;
+  box-shadow: 0 0 8px rgba(127, 87, 184, 0.6) !important;
+}
+
+/* ファイル選択部分の改善 */
+.log-file-selection {
+  margin-bottom: 16px;
+}
+
+.log-file-selection label {
+  font-size: 14px;
+  color: #cbd5e1;
+  font-weight: 500;
+  display: block;
+  margin-bottom: 8px;
+}
+
+/* カスタムファイル選択ボタン */
+.custom-file-input {
+  position: relative;
+  display: inline-block;
+  width: 100%;
+}
+
+.custom-file-input input[type="file"] {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 2;
+}
+
+.custom-file-button {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, #334155 0%, #475569 100%);
+  border: 1px solid #475569;
+  border-radius: 8px;
+  color: #e5e7eb;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: center;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.custom-file-button:hover {
+  background: linear-gradient(135deg, #475569 0%, #64748b 100%);
+  border-color: #5FADCF;
+}
+
+.custom-file-button .icon {
+  margin-right: 8px;
+}
+
+.log-file-info {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-top: 8px;
+  padding: 4px 0;
+}
+
+/* 再生コントロールコンテナ */
+#playback-controls-container {
+  margin-top: 16px;
+  width: 100%;
+  display: block;
+}
+
+/* 再生コントロール本体 */
+.playback-controls {
+  width: 100%;
+  padding: 14px;
+  background: rgba(15, 23, 42, 0.8);
+  border-radius: 8px;
+  border: 1px solid #334155;
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* トップコントロール（ボタン類） */
+.playback-top-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+/* コントロールボタン共通スタイル */
+.control-button {
+  min-width: 36px;
+  height: 36px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #334155 0%, #475569 100%);
+  border: 1px solid #475569;
+  border-radius: 6px;
+  color: #e5e7eb;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.control-button:hover {
+  background: linear-gradient(135deg, #5FADCF 0%, #4a8fb8 100%);
+  border-color: #5FADCF;
+  transform: translateY(-1px);
+}
+
+.control-button:active {
+  transform: translateY(0);
+}
+
+/* 再生、一時停止ボタン */
+.play-button, .pause-button {
+  background: linear-gradient(135deg, #5FADCF 0%, #4a8fb8 100%);
+  border-color: #5FADCF;
+  min-width: 44px;
+  height: 44px;
+}
+
+.play-button:hover, .pause-button:hover {
+  background: linear-gradient(135deg, #7F57B8 0%, #5FADCF 100%);
+  border-color: #7F57B8;
+}
+
+/* 5秒スキップ、戻しボタンを追加 */
+.skip-back-button, .skip-forward-button {
+  position: relative;
+  font-weight: bold;
+}
+
+.skip-back-button::after, .skip-forward-button::after {
+  content: "5s";
+  position: absolute;
+  bottom: -2px;
+  font-size: 9px;
+  font-weight: normal;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* 再生速度セクションを小型化 */
+.speed-control-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  background: rgba(15, 23, 42, 0.5);
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(51, 65, 85, 0.5);
+}
+
+.speed-control-container span {
+  font-size: 12px;
+  color: #cbd5e1;
+  white-space: nowrap;
+}
+
+#speed-value {
+  font-weight: 600;
+  color: #5FADCF;
+  min-width: 32px;
+  text-align: center;
+}
+
+/* 再生速度セレクト */
+.speed-preset-select {
+  padding: 2px 4px;
+  border-radius: 4px;
+  border: 1px solid #334155;
+  background: #0b1220;
+  color: #e5e7eb;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.speed-preset-select:focus {
+  outline: none;
+  border-color: #5FADCF;
+  box-shadow: 0 0 0 2px rgba(95, 173, 207, 0.2);
+}
+
+/* プログレスバー部分 */
+.progress-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 0;
+  margin-top: 4px;
+}
+
+.time-display {
+  font-size: 12px;
+  color: #94a3b8;
+  font-family: monospace;
+  flex-shrink: 0;
+}
+
+/* プログレスバー本体 */
+.progress-bar {
+  flex: 1;
+  height: 8px;
+  background: #1e293b;
+  border-radius: 4px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.progress-bar-inner {
+  height: 100%;
+  background: linear-gradient(90deg, #5FADCF 0%, #7F57B8 100%);
+  border-radius: 3px;
+  width: 0;
+  transition: width 0.1s ease;
+}
+
+/* プログレスバーのホバーエフェクト */
+.progress-bar:hover {
+  height: 10px;
+}
+
+.progress-bar:hover .progress-bar-inner {
+  background: linear-gradient(90deg, #7F57B8 0%, #5FADCF 100%);
+}
+
+/* レスポンシブ調整 */
+@media (max-width: 480px) {
+  .playback-top-controls {
+    justify-content: center;
+  }
+
+  .speed-control-container {
+    margin: 8px 0 0 0;
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* 再生中の視覚的フィードバック */
+.is-playing .play-icon {
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% { opacity: 0.6; }
+  50% { opacity: 1; }
+  100% { opacity: 0.6; }
+}

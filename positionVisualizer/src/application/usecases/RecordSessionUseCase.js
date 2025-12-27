@@ -6,6 +6,7 @@
 
 import { AppLogger } from '../../infrastructure/services/Logger.js';
 import { EventBus } from '../../infrastructure/services/EventBus.js';
+import { EventTypes } from '../../domain/events/EventTypes.js';
 
 /**
  * セッション記録のユースケースクラス
@@ -46,8 +47,10 @@ export class RecordSessionUseCase {
    * @returns {Promise<boolean>} 成功したかどうか
    */
   async startRecording(initialValues = {}) {
+    this.logger.debug('記録開始リクエストを受信しました');
+
     if (this.isRecording) {
-      this.logger.warn('Recording already in progress');
+      this.logger.warn('すでに記録中です');
       return false;
     }
 
@@ -58,14 +61,36 @@ export class RecordSessionUseCase {
     this.startTime = Date.now();
     this.entries = [];
 
-    this.logger.info(`Starting recording session: ${sessionId}`);
+    this.logger.info(`記録セッションを開始します: ${sessionId}`);
 
     // 初期値があれば記録
     if (initialValues && Object.keys(initialValues).length > 0) {
+      this.logger.debug(`初期値を記録します: デバイス数=${Object.keys(initialValues).length}`);
       for (const deviceId in initialValues) {
         const value = initialValues[deviceId];
         this.recordDeviceData(deviceId, value);
       }
+    } else {
+      this.logger.debug('初期値はありません');
+    }
+
+    // セッション情報をリポジトリに一時保存（空セッションとして）
+    // ただし自動ダウンロードはしない
+    try {
+      await this.sessionRepository.saveTemporarySession(
+        sessionId,
+        {
+          startTime: this.startTime,
+          endTime: null,
+          duration: 0,
+          entryCount: this.entries.length,
+          entries: []
+        }
+      );
+      this.logger.debug(`一時的なセッション情報を保存しました: ${sessionId}`);
+    } catch (error) {
+      // セッション保存の失敗はエラーログを残すが、記録自体は継続する
+      this.logger.error(`一時的なセッション情報の保存に失敗しました: ${error.message}`);
     }
 
     // デバイス値の変更を監視
@@ -74,7 +99,17 @@ export class RecordSessionUseCase {
     // 最大記録時間を設定
     this._setupAutoStop();
 
-    // イベント通知
+    // ポーリング機能を開始（イベント監視の補完として）
+    this.startPolling();
+
+    // イベント通知（新しいイベント命名規則）
+    this.logger.debug('RECORDING_STARTED イベントを発行します');
+    EventBus.emit(EventTypes.RECORDING_STARTED, {
+      sessionId,
+      startTime: this.startTime
+    });
+
+    // 後方互換性のために旧イベント名でも発行
     EventBus.emit('recordingStarted', {
       sessionId,
       startTime: this.startTime
@@ -111,28 +146,51 @@ export class RecordSessionUseCase {
     // デバイス値の購読解除
     this._unsubscribeFromDeviceValues();
 
+    // ポーリングを停止
+    this.stopPolling();
+
+    // 一時セッションがあれば削除
+    try {
+      this.sessionRepository.removeTemporarySession(sessionId);
+    } catch (error) {
+      this.logger.warn(`一時セッションの削除中にエラーが発生: ${error.message}`);
+    }
+
     // セッションを保存（オプション）
     if (save && this.options.autoSave && sessionId) {
-      await this.sessionRepository.saveSession(
-        sessionId,
-        {
-          startTime: this.startTime,
-          endTime,
-          duration,
-          entryCount: entries.length,
-          entries
+      try {
+        await this.sessionRepository.saveSession(
+          sessionId,
+          {
+            startTime: this.startTime,
+            endTime,
+            duration,
+            entryCount: entries.length,
+            entries
+          }
+        );
+
+        this.logger.info(`Saved recording session: ${sessionId}`);
+
+        // エントリがある場合は自動的にダウンロード
+        if (entries.length > 0) {
+          await this.saveRecordedData(entries);
+        } else {
+          this.logger.warn(`記録を停止しましたが、エントリが0件のためダウンロードしません: ${sessionId}`);
         }
-      );
-
-      this.logger.info(`Saved recording session: ${sessionId}`);
-
-      // エントリがある場合は自動的にダウンロード
-      if (entries.length > 0) {
-        await this.saveRecordedData(entries);
+      } catch (error) {
+        this.logger.error(`セッション保存中にエラーが発生: ${error.message}`);
       }
     }
 
-    // イベント通知
+    // イベント通知（新しいイベント命名規則）
+    EventBus.emit(EventTypes.RECORDING_STOPPED, {
+      sessionId,
+      duration,
+      entriesCount: entries.length
+    });
+
+    // 後方互換性のために旧イベント名でも発行
     EventBus.emit('recordingStopped', {
       sessionId,
       duration,
@@ -155,23 +213,33 @@ export class RecordSessionUseCase {
    */
   recordDeviceData(deviceId, value) {
     if (!this.isRecording) {
-      this.logger.debug(`Cannot record data: no active recording session`);
+      this.logger.debug(`記録できません: アクティブな記録セッションがありません (deviceId: ${deviceId})`);
       return false;
     }
 
     if (!deviceId) {
-      this.logger.warn('Invalid device ID for recording');
+      this.logger.warn('デバイスIDが無効なため記録できません');
       return false;
     }
 
+    // 再生モード関連のチェックを削除（イベントタイプで区別する方式に変更）
+
     // 最大エントリ数をチェック
     if (this.entries.length >= this.options.maxEntries) {
-      this.logger.warn(`Maximum entries (${this.options.maxEntries}) reached, stopping recording`);
+      this.logger.warn(`最大エントリ数 (${this.options.maxEntries}) に達しました。記録を停止します。`);
       this.stopRecording().catch(error => {
-        this.logger.error('Error stopping recording:', error);
+        this.logger.error('記録停止中にエラーが発生しました:', error);
       });
       return false;
     }
+
+    // 値の内容をログ出力
+    const valueStr = typeof value === 'object' ?
+      JSON.stringify(value, (key, val) => {
+        if (key === 'deviceId' || key === 'timestamp' || key === 'relativeTime') return undefined;
+        return val;
+      }) : value;
+    this.logger.debug(`デバイス ${deviceId} の値を記録: ${valueStr}`);
 
     const timestamp = Date.now();
     const relativeTime = timestamp - this.startTime;
@@ -187,7 +255,21 @@ export class RecordSessionUseCase {
     // エントリを追加
     this.entries.push(entry);
 
+    // 定期的にエントリ数をログ出力
+    if (this.entries.length % 10 === 0 || this.entries.length === 1) {
+      this.logger.info(`現在のエントリ数: ${this.entries.length}`);
+    }
+
     // イベント通知
+    // 'entryRecorded'に対応する新しいイベント名がEventTypesにないためカスタムで定義
+    const ENTRY_RECORDED_EVENT = 'event:recording:entry:recorded';
+    EventBus.emit(ENTRY_RECORDED_EVENT, {
+      entry,
+      sessionId: this.currentSessionId,
+      entriesCount: this.entries.length
+    });
+
+    // 後方互換性のために旧イベント名でも発行
     EventBus.emit('entryRecorded', {
       entry,
       sessionId: this.currentSessionId,
@@ -226,11 +308,23 @@ export class RecordSessionUseCase {
       return false;
     }
 
+    // 強制的なセーブでない場合かつ記録中の場合は、保存しない
+    if (!entries && this.isRecording) {
+      this.logger.debug('現在記録中のため、明示的なエントリ指定なしではダウンロードしません');
+      return false;
+    }
+
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const defaultFilename = `recording_${timestamp}.json`;
     const saveFilename = filename || defaultFilename;
 
     try {
+      // データが空でないことを再確認
+      if (!dataToSave.length) {
+        this.logger.warn('保存するデータが空です');
+        return false;
+      }
+
       // デバイスIDを収集
       const deviceIds = new Set(dataToSave.map(e => e.deviceId));
 
@@ -284,7 +378,15 @@ export class RecordSessionUseCase {
 
         this.logger.info(`Recording downloaded as ${saveFilename} (${dataToSave.length} entries)`);
 
-        // イベント通知
+        // イベント通知（新しいイベント命名規則）
+        // 'recordingSaved'に対応する新しいイベント名がEventTypesにないためカスタムで定義
+        const RECORDING_SAVED_EVENT = 'event:recording:saved';
+        EventBus.emit(RECORDING_SAVED_EVENT, {
+          filename: saveFilename,
+          entriesCount: dataToSave.length
+        });
+
+        // 後方互換性のために旧イベント名でも発行
         EventBus.emit('recordingSaved', {
           filename: saveFilename,
           entriesCount: dataToSave.length
@@ -299,7 +401,15 @@ export class RecordSessionUseCase {
       if (result) {
         this.logger.info(`Recording saved to ${saveFilename} (${dataToSave.length} entries)`);
 
-        // イベント通知
+        // イベント通知（新しいイベント命名規則）
+        // 'recordingSaved'に対応する新しいイベント名がEventTypesにないためカスタムで定義
+        const RECORDING_SAVED_EVENT = 'event:recording:saved';
+        EventBus.emit(RECORDING_SAVED_EVENT, {
+          filename: saveFilename,
+          entriesCount: dataToSave.length
+        });
+
+        // 後方互換性のために旧イベント名でも発行
         EventBus.emit('recordingSaved', {
           filename: saveFilename,
           entriesCount: dataToSave.length
@@ -351,8 +461,57 @@ export class RecordSessionUseCase {
     // 既存の購読を解除
     this._unsubscribeFromDeviceValues();
 
+    this.logger.debug(`デバイス値変更の購読を開始します（セッションID: ${this.currentSessionId}, 記録中: ${this.isRecording}）`);
+
     // ValueRepositoryの変更イベントを購読
-    EventBus.on('deviceValueChanged', this._handleDeviceValueChanged.bind(this));
+    // バインドされた関数のリファレンスを保持
+    this.boundHandleDeviceValueChanged = this._handleDeviceValueChanged.bind(this);
+
+    // デバイス値変更イベントリスナー（旧イベント名）
+    EventBus.on('deviceValueChanged', this.boundHandleDeviceValueChanged);
+    this.logger.debug('deviceValueChanged イベントのリスナーを登録しました');
+
+    // DeviceUpdatedイベントも監視（値の更新時に発火される場合があるため）
+    this.boundHandleDeviceUpdated = (event) => {
+      if (!event || !event.deviceId) return;
+
+      this.logger.debug(`deviceUpdated/DEVICE_UPDATED イベント受信: ${event.deviceId}`);
+
+      if (event.value) {
+        this.recordDeviceData(event.deviceId, event.value);
+      }
+    };
+
+    // 新しいイベント命名規則でリスナーを登録
+    EventBus.on(EventTypes.DEVICE_UPDATED, this.boundHandleDeviceUpdated);
+    this.logger.debug('DEVICE_UPDATED イベントのリスナーを登録しました');
+
+    // 後方互換性のために旧イベント名でも登録
+    EventBus.on('deviceUpdated', this.boundHandleDeviceUpdated);
+    this.logger.debug('deviceUpdated イベントのリスナーを登録しました');
+
+    // デバイスの変更をリアルタイムに監視する
+    this.boundHandleDeviceValueUpdated = (event) => {
+      if (!event || !event.deviceId) return;
+
+      this.logger.debug(`deviceValueUpdated/DEVICE_VALUE_UPDATED イベント受信: ${event.deviceId}`);
+
+      if (event.value) {
+        this.recordDeviceData(event.deviceId, event.value);
+      }
+    };
+
+    // 新しいイベント命名規則でリスナーを登録
+    // 注意: ここでは意図的にDEVICE_VALUE_REPLAYEDのイベントは監視しない
+    // 記録は実際のデバイスからのイベント(DEVICE_VALUE_UPDATED)のみを対象とする
+    EventBus.on(EventTypes.DEVICE_VALUE_UPDATED, this.boundHandleDeviceValueUpdated);
+    this.logger.debug('DEVICE_VALUE_UPDATED イベントのリスナーを登録しました');
+
+    // 後方互換性のために旧イベント名でも登録
+    EventBus.on('deviceValueUpdated', this.boundHandleDeviceValueUpdated);
+    this.logger.debug('deviceValueUpdated イベントのリスナーを登録しました');
+
+    this.logger.info('デバイス値変更の購読を開始しました');
   }
 
   /**
@@ -360,12 +519,56 @@ export class RecordSessionUseCase {
    * @private
    */
   _unsubscribeFromDeviceValues() {
-    EventBus.off('deviceValueChanged', this._handleDeviceValueChanged.bind(this));
+    this.logger.debug('デバイス値変更の購読解除を開始します');
 
+    // バインドされた関数のリファレンスを使って解除
+    if (this.boundHandleDeviceValueChanged) {
+      EventBus.off('deviceValueChanged', this.boundHandleDeviceValueChanged);
+      this.logger.debug('deviceValueChanged イベントのリスナーを解除しました');
+      this.boundHandleDeviceValueChanged = null;
+    }
+
+    // deviceUpdatedイベントリスナーを解除
+    if (this.boundHandleDeviceUpdated) {
+      // 新しいイベント命名規則のリスナーを解除
+      EventBus.off(EventTypes.DEVICE_UPDATED, this.boundHandleDeviceUpdated);
+      this.logger.debug('DEVICE_UPDATED イベントのリスナーを解除しました');
+
+      // 古いイベント名のリスナーも解除
+      EventBus.off('deviceUpdated', this.boundHandleDeviceUpdated);
+      this.logger.debug('deviceUpdated イベントのリスナーを解除しました');
+
+      this.boundHandleDeviceUpdated = null;
+    } else {
+      // 後方互換性のため
+      EventBus.off('deviceUpdated');
+      EventBus.off(EventTypes.DEVICE_UPDATED);
+    }
+
+    // deviceValueUpdatedイベントリスナーを解除
+    if (this.boundHandleDeviceValueUpdated) {
+      // 新しいイベント命名規則のリスナーを解除
+      EventBus.off(EventTypes.DEVICE_VALUE_UPDATED, this.boundHandleDeviceValueUpdated);
+      this.logger.debug('DEVICE_VALUE_UPDATED イベントのリスナーを解除しました');
+
+      // 古いイベント名のリスナーも解除
+      EventBus.off('deviceValueUpdated', this.boundHandleDeviceValueUpdated);
+      this.logger.debug('deviceValueUpdated イベントのリスナーを解除しました');
+
+      this.boundHandleDeviceValueUpdated = null;
+    } else {
+      // 後方互換性のため
+      EventBus.off('deviceValueUpdated');
+      EventBus.off(EventTypes.DEVICE_VALUE_UPDATED);
+    }
+
+    // 既存の購読も解除
     this.deviceValueSubscriptions.forEach(unsubscribe => {
       unsubscribe();
     });
     this.deviceValueSubscriptions.clear();
+
+    this.logger.debug('デバイス値変更の購読を解除しました');
   }
 
   /**
@@ -374,9 +577,37 @@ export class RecordSessionUseCase {
    * @private
    */
   _handleDeviceValueChanged(event) {
-    if (!event || !event.deviceId || !event.value) return;
+    if (!event || !event.deviceId) return;
 
-    this.recordDeviceData(event.deviceId, event.value);
+    this.logger.debug(`デバイス値変更イベント受信: ${event.deviceId}, タイムスタンプ: ${event.timestamp || 'なし'}`);
+
+    // 記録中でない場合は処理しない
+    if (!this.isRecording) {
+      this.logger.debug(`記録中でないため値を記録しません: ${event.deviceId}`);
+      return;
+    }
+
+    // 再生モード関連のチェックを削除（イベントタイプで区別する方式に変更）
+
+    try {
+      // 値の有無を確認
+      if (event.value) {
+        this.logger.debug(`デバイス値変更を検出: ${event.deviceId}, 値: ${JSON.stringify(event.value)}`);
+        this.recordDeviceData(event.deviceId, event.value);
+      } else if (event.previousValue) {
+        // 値がない場合は前回の値を使用
+        this.logger.debug(`デバイス値変更を検出 (前回値を使用): ${event.deviceId}, 前回値: ${JSON.stringify(event.previousValue)}`);
+        this.recordDeviceData(event.deviceId, event.previousValue);
+      } else {
+        // 何も値がない場合はデバイスIDのみで記録
+        this.logger.debug(`デバイス値なしで変更を検出: ${event.deviceId}`);
+        this.recordDeviceData(event.deviceId, { rawValue: null, normalizedValue: null });
+      }
+
+      this.logger.debug(`デバイス値変更イベント処理完了: ${event.deviceId}, 現在のエントリ数: ${this.entries.length}`);
+    } catch (error) {
+      this.logger.error(`デバイス値変更処理中にエラーが発生: ${event.deviceId}`, error);
+    }
   }
 
   /**
@@ -406,23 +637,33 @@ export class RecordSessionUseCase {
 
     // DeviceValueインスタンスの場合
     if (value.toJSON && typeof value.toJSON === 'function') {
-      return value.toJSON();
+      const jsonValue = value.toJSON();
+      // フォーマットを統一するために、必要なフィールドのみを抽出して返す
+      return {
+        rawValue: jsonValue.rawValue !== undefined ? jsonValue.rawValue : null,
+        normalizedValue: jsonValue.normalizedValue !== undefined ? jsonValue.normalizedValue : jsonValue.rawValue
+      };
     }
 
     // rawValueとnormalizedValueを持つオブジェクトの場合
     if (value.rawValue !== undefined || value.normalizedValue !== undefined) {
+      // rawValue が設定されていて normalizedValue が未設定の場合、rawValue をコピーする
+      const rawVal = value.rawValue !== undefined ? value.rawValue : null;
+      const normalVal = (value.normalizedValue !== undefined && value.normalizedValue !== null) ?
+        value.normalizedValue : rawVal;
+
       return {
-        raw: value.rawValue !== undefined ? value.rawValue : null,
-        normalized: value.normalizedValue !== undefined ? value.normalizedValue : null,
-        timestamp: value.timestamp || null
+        rawValue: rawVal,
+        normalizedValue: normalVal
+        // deviceIdとtimestampは不要（エントリ自体が持つ情報）
       };
     }
 
     // 数値の場合
     if (typeof value === 'number') {
       return {
-        raw: value,
-        normalized: null
+        rawValue: value,
+        normalizedValue: value // rawValueと同じ値を設定
       };
     }
 
@@ -443,11 +684,70 @@ export class RecordSessionUseCase {
     // 最大記録時間後に自動停止
     this.autoStopTimer = setTimeout(() => {
       if (this.isRecording) {
-        this.logger.warn(`Maximum recording time (${this.options.maxRecordingTime}ms) reached, stopping recording`);
+        this.logger.warn(`最大記録時間 (${this.options.maxRecordingTime}ms) に達しました。記録を停止します。`);
         this.stopRecording().catch(error => {
-          this.logger.error('Error during auto-stop:', error);
+          this.logger.error('自動停止中にエラーが発生しました:', error);
         });
       }
     }, this.options.maxRecordingTime);
+  }
+
+  /**
+   * デバイス値のポーリングを開始
+   * @private
+   */
+  startPolling() {
+    this.logger.debug('デバイス値のポーリングを開始します');
+
+    // 既存のポーリングを停止
+    this.stopPolling();
+
+    // 1秒間隔でデバイス値をポーリング
+    this.pollingInterval = setInterval(async () => {
+      if (!this.isRecording) {
+        return;
+      }
+
+      try {
+        // valueRepositoryが存在するか確認
+        if (!this.valueRepository || typeof this.valueRepository.getAllCurrentValues !== 'function') {
+          this.logger.warn('ValueRepositoryが利用できません。ポーリングをスキップします。');
+          return;
+        }
+
+        this.logger.debug('デバイス値をポーリングします');
+        const values = await this.valueRepository.getAllCurrentValues();
+
+        if (!values || Object.keys(values).length === 0) {
+          this.logger.debug('ポーリング: デバイス値がありません');
+          return;
+        }
+
+        this.logger.debug(`ポーリング: ${Object.keys(values).length}個のデバイス値を取得しました`);
+
+        // 各デバイスの値を記録
+        for (const deviceId in values) {
+          const value = values[deviceId];
+          if (value) {
+            // ポーリングで取得した値を記録
+            this.recordDeviceData(deviceId, value);
+          }
+        }
+      } catch (error) {
+        this.logger.error('値のポーリング中にエラーが発生しました:', error);
+      }
+    }, 1000); // 1秒間隔
+  }
+
+  /**
+   * デバイス値のポーリングを停止
+   * @private
+   */
+  stopPolling() {
+    if (this.pollingInterval) {
+      this.logger.debug('デバイス値のポーリングを停止します');
+      clearInterval(this.pollingInterval);
+      this.pollingInterval = null;
+    }
   }
 }

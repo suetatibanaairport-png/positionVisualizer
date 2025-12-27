@@ -467,21 +467,44 @@ export class MeterRenderer {
     }
 
     viewModelState.values.forEach((val, index) => {
-      // デバイスが接続されていない、かつ一時的な切断状態でもない場合はスキップ
+      // デバイスが接続されていない、かつ一時的な切断状態でもない場合、または表示が非表示に設定されている場合はスキップ
       const isConnected = viewModelState.connected[index];
       const isTempDisconnected = hasTempDisconnected && viewModelState.tempDisconnected[index];
 
-      if (!isConnected && !isTempDisconnected) {
+      // viewModelState.visibleの型と値を詳細にログ出力
+      this.logger.debug(`[DEBUG TOGGLE] viewModelState.visible type: ${typeof viewModelState.visible}`);
+      this.logger.debug(`[DEBUG TOGGLE] viewModelState.visible is Array: ${Array.isArray(viewModelState.visible)}`);
+      if (Array.isArray(viewModelState.visible)) {
+        this.logger.debug(`[DEBUG TOGGLE] viewModelState.visible array: ${JSON.stringify(viewModelState.visible)}`);
+      }
+      this.logger.debug(`[DEBUG TOGGLE] viewModelState.visible[${index}] value: ${viewModelState.visible ? viewModelState.visible[index] : 'undefined'}`);
+      this.logger.debug(`[DEBUG TOGGLE] viewModelState.visible[${index}] type: ${viewModelState.visible ? typeof viewModelState.visible[index] : 'undefined'}`);
+
+      // isVisibleの計算
+      const isVisible = Array.isArray(viewModelState.visible) && viewModelState.visible[index] !== false;
+
+      // デバッグログ：デバイスの表示状態
+      this.logger.debug(`[DEBUG TOGGLE] Device ${index} final visibility state: connected=${isConnected}, tempDisconnected=${isTempDisconnected}, visible=${isVisible}, rawVisible=${viewModelState.visible ? viewModelState.visible[index] : 'undefined'}`);
+
+      if ((!isConnected && !isTempDisconnected) || !isVisible) {
+        this.logger.debug(`[DEBUG TOGGLE] Device ${index} will be HIDDEN due to conditions: !connected && !tempDisconnected=${!isConnected && !isTempDisconnected}, !isVisible=${!isVisible}`);
         // 既存のアイコンがあれば削除
         const existingG = this.svg.querySelector(`g[data-perf="${index}"]`);
-        if (existingG) existingG.remove();
+        if (existingG) {
+          this.logger.debug(`[DEBUG TOGGLE] Removing existing icon for device ${index}`);
+          existingG.remove();
+        } else {
+          this.logger.debug(`[DEBUG TOGGLE] No existing icon found for device ${index} to remove`);
+        }
         existing.delete(String(index));
-        // 最後の値もクリア
-        if (this._lastDeviceValues.has(index)) {
-          this.logger.debug(`Clearing cached value for disconnected device ${index}`);
+        // 接続状態を維持する場合は値のキャッシュもそのまま保持し、完全な切断の場合のみクリア
+        if (!isConnected && !isTempDisconnected && this._lastDeviceValues.has(index)) {
+          this.logger.debug(`[DEBUG TOGGLE] Clearing cached value for disconnected device ${index}`);
           this._lastDeviceValues.delete(index);
         }
         return;
+      } else {
+        this.logger.debug(`[DEBUG TOGGLE] Device ${index} will be SHOWN`);
       }
 
       // 値がnullの場合は最後の有効な値を使用（アイコンが消えるのを防ぐ）

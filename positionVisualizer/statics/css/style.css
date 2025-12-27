@@ -188,8 +188,8 @@ body {
 /* デバイス入力 */
 .device-inputs {
   margin-bottom: 20px;
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  display: flex;
+  flex-direction: column;
   gap: 12px;
 }
 
@@ -203,6 +203,81 @@ body {
   flex-direction: column;
   margin-bottom: 0;
   gap: 8px;
+  padding: 10px;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.3);
+  transition: all 0.2s ease;
+}
+
+.device-group:hover {
+  background: rgba(15, 23, 42, 0.5);
+  border-color: #475569;
+}
+
+/* デバイス名クラス */
+.device-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #e5e7eb;
+  padding: 4px 0;
+  margin-bottom: 8px;
+}
+
+/* デバイスコントロール行 */
+.device-controls {
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* トグルスイッチ */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 20px;
+  margin-right: 8px;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #334155;
+  transition: .4s;
+  border-radius: 20px;
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 14px;
+  width: 14px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: .4s;
+  border-radius: 50%;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background-color: #5FADCF;
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+  transform: translateX(20px);
 }
 
 .device-group label {
@@ -212,6 +287,297 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.no-devices-message {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 20px;
+  color: #94a3b8;
+  font-style: italic;
+  border: 1px dashed #334155;
+  border-radius: 8px;
+  margin: 10px 0;
+}
+
+/* デバイスヘッダーのスタイル（名前と表示切り替え） */
+.device-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #334155;
+}
+
+/* デバイスID表示 */
+.device-id-container {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-bottom: 6px;
+  font-family: monospace;
+  background: rgba(15, 23, 42, 0.5);
+  padding: 4px 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/* デバイスツール（表示非表示、編集、アイコン） */
+.device-tools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.tool-item {
+  flex-shrink: 0;
+}
+
+/* 表示/非表示切り替えスタイル */
+.visibility-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.visibility-checkbox {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #475569;
+  border-radius: 4px;
+  background: #0b1220;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.visibility-checkbox:hover {
+  border-color: #64748b;
+  background: #1e293b;
+}
+
+.visibility-checkbox:checked {
+  background: #5FADCF;
+  border-color: #7F57B8;
+}
+
+.visibility-checkbox:checked::after {
+  content: '✓';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: white;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.visibility-label {
+  font-size: 12px;
+  color: #cbd5e1;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.visibility-label:hover {
+  color: #f1f5f9;
+}
+
+/* 編集ボタン */
+.edit-button {
+  background: transparent;
+  border: none;
+  font-size: 16px;
+  padding: 2px 8px;
+  cursor: pointer;
+  color: #cbd5e1;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  box-shadow: none;
+}
+
+.edit-button:hover {
+  background: rgba(95, 173, 207, 0.2);
+  transform: none;
+  color: #5FADCF;
+  box-shadow: none;
+}
+
+.edit-button:active {
+  transform: translateY(1px);
+}
+
+/* デバイス名表示と編集 */
+.name-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  width: 100%;
+}
+
+.name-display-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.device-name-display {
+  font-size: 14px;
+  font-weight: 500;
+  color: #e5e7eb;
+  flex-grow: 1;
+  padding: 4px 0;
+}
+
+.name-display-container .edit-button {
+  background: transparent;
+  border: none;
+  font-size: 16px;
+  padding: 2px 8px;
+  cursor: pointer;
+  color: #94a3b8;
+  opacity: 0.7;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  box-shadow: none;
+}
+
+.name-display-container .edit-button:hover {
+  background: rgba(95, 173, 207, 0.1);
+  transform: none;
+  color: #5FADCF;
+  opacity: 1;
+  box-shadow: none;
+}
+
+.name-display-container .edit-button:active {
+  transform: translateY(1px);
+}
+
+.device-name-input {
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #334155;
+  background: #0b1220;
+  color: #e5e7eb;
+  font-size: 13px;
+  font-weight: 400;
+  font-family: inherit;
+  flex: 1;
+  min-width: 120px;
+  max-width: 200px;
+  transition: all 0.2s ease;
+}
+
+.device-name-input:focus {
+  outline: none;
+  border-color: #5FADCF;
+  background: #0f172a;
+  box-shadow: 0 0 0 3px rgba(95, 173, 207, 0.1);
+}
+
+.device-name-input:hover {
+  border-color: #475569;
+}
+
+/* 再生モード表示 */
+.replay-mode-indicator {
+  margin-bottom: 10px;
+  padding: 6px 10px;
+  background-color: rgba(95, 173, 207, 0.2);
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #5FADCF;
+  text-align: center;
+}
+
+/* 再生モード中に無効化されたデバイス */
+.device-group.disabled {
+  opacity: 0.6;
+  position: relative;
+  overflow: hidden;
+  border-color: #475569;
+  background-color: rgba(30, 41, 59, 0.7);
+}
+
+.device-group.disabled::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(95, 173, 207, 0.1),
+    rgba(95, 173, 207, 0.1) 10px,
+    rgba(95, 173, 207, 0.2) 10px,
+    rgba(95, 173, 207, 0.2) 20px
+  );
+  pointer-events: none;
+  z-index: 1;
+  border-radius: 8px;
+}
+
+.disabled-reason {
+  background-color: rgba(95, 173, 207, 0.2);
+  color: #5FADCF;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  margin-top: 4px;
+  text-align: center;
+  width: 100%;
+  font-weight: 500;
+}
+
+/* ログ再生モードラベル */
+.log-replay-mode-label {
+  background-color: rgba(95, 173, 207, 0.2);
+  color: #5FADCF;
+  border: 1px solid rgba(95, 173, 207, 0.5);
+  border-radius: 4px;
+  padding: 6px 12px;
+  margin-bottom: 12px;
+  font-weight: 600;
+  text-align: center;
+  font-size: 14px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.log-replay-mode-label::before {
+  content: "●";
+  color: #5FADCF;
+  margin-right: 8px;
+  animation: pulse 1.5s infinite;
+  font-size: 10px;
+}
+
+@keyframes pulse {
+  0% { opacity: 0.6; }
+  50% { opacity: 1; }
+  100% { opacity: 0.6; }
 }
 
 .ip-label {
@@ -321,17 +687,8 @@ body {
   opacity: 0.8;
 }
 
-/* ログ再生セクション */
-.log-replay-section {
-  padding: 0;
-  background: transparent;
-  border: none;
-}
-
+/* ログ管理セクション - 新構造 */
 .log-sections {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
   padding: 16px;
   background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
   border: 1px solid #334155;
@@ -342,8 +699,113 @@ body {
   min-width: 0;
 }
 
-.log-replay-section label,
-.log-record-section label {
+/* ログ管理メインコンポーネント */
+.log-manager {
+  padding: 0 0 12px 0;
+}
+
+.log-manager h3 {
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  color: #cbd5e1;
+  border-bottom: 1px solid #334155;
+  padding-bottom: 8px;
+}
+
+.log-manager-buttons {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.log-manager-button {
+  flex: 1;
+  min-width: 140px;
+  padding: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+
+.log-record-status {
+  font-size: 13px;
+  color: #94a3b8;
+  margin: 8px 0;
+  text-align: center;
+  padding: 4px 0;
+}
+
+/* ログ再生コンポーネント */
+.log-replay-component {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid #334155;
+  border-radius: 8px;
+  margin-top: 16px;
+  padding: 16px;
+  transition: all 0.3s ease;
+  display: block; /* 確実に表示 */
+}
+
+/* 再生コントロール */
+#playback-controls-container {
+  margin-top: 16px;
+  width: 100%;
+  display: block;
+}
+
+/* 再生コントロールコンポーネント */
+.playback-controls {
+  width: 100%;
+  padding: 10px;
+  background: rgba(15, 23, 42, 0.8);
+  border-radius: 8px;
+  border: 1px solid #334155;
+  margin-top: 10px;
+  display: block;
+}
+
+.log-replay-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.log-replay-header h3 {
+  margin: 0;
+  font-size: 16px;
+  color: #5FADCF;
+  font-weight: 600;
+}
+
+.close-button {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(95, 173, 207, 0.1);
+  color: #5FADCF;
+  border: 1px solid rgba(95, 173, 207, 0.3);
+  font-size: 18px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.2s ease;
+}
+
+.close-button:hover {
+  background: rgba(95, 173, 207, 0.2);
+  transform: scale(1.1);
+}
+
+.log-file-selection {
+  margin-bottom: 16px;
+}
+
+.log-file-selection label {
   font-size: 14px;
   color: #cbd5e1;
   font-weight: 500;
@@ -351,37 +813,29 @@ body {
   margin-bottom: 8px;
 }
 
-.log-replay-buttons {
-  display: flex;
-  gap: 10px;
-  margin-top: 12px;
-}
-
-.log-replay-buttons button {
-  flex: 1;
-}
-
-/* ログ記録セクション */
-.log-record-section {
-  padding: 0;
-  background: transparent;
-  border: none;
-}
-
-.log-record-status {
+.log-file-info {
   font-size: 12px;
   color: #94a3b8;
-  margin-bottom: 8px;
+  margin-top: 8px;
+  padding: 4px 0;
 }
 
-.log-record-buttons {
-  display: flex;
-  gap: 10px;
-  margin-top: 12px;
+/* 状態表示用のスタイル */
+.recording-active .log-record-status {
+  color: #f87171;
+  font-weight: 600;
 }
 
-.log-record-buttons button {
-  flex: 1;
+.replaying-active .log-manager-button:first-child {
+  background: rgba(95, 173, 207, 0.2);
+  border-color: #5FADCF;
+}
+
+/* レスポンシブ対応 */
+@media (max-width: 600px) {
+  .log-manager-buttons {
+    flex-direction: column;
+  }
 }
 
 /* 記録停止ボタン（赤色系） */
@@ -557,8 +1011,8 @@ button:disabled:hover {
 .icon-file-button {
   position: relative;
   display: block;
-  width: 100%;
-  height: 36px;
+  min-width: 100px;
+  height: 28px;
   cursor: pointer;
 }
 
@@ -571,22 +1025,60 @@ button:disabled:hover {
   z-index: 1;
 }
 
+/* アイコンボタンとコンテナ */
+.icon-button-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.icon-button {
+  background: linear-gradient(135deg, #334155 0%, #475569 100%);
+  border: none;
+  border-radius: 4px;
+  color: #cbd5e1;
+  padding: 6px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.icon-button:hover {
+  background: linear-gradient(135deg, #475569 0%, #64748b 100%);
+  color: #f1f5f9;
+}
+
+.device-icon-preview {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.icon-button-label {
+  white-space: nowrap;
+}
+
 .icon-button-text {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 100%;
   height: 100%;
-  padding: 8px 12px;
-  border-radius: 8px;
-  border: 2px solid #334155;
+  border-radius: 4px;
+  border: 1px solid #334155;
   background: linear-gradient(135deg, #334155 0%, #475569 100%);
   color: #cbd5e1;
   font-size: 12px;
-  font-weight: 600;
   transition: all 0.2s ease;
   font-family: inherit;
   box-sizing: border-box;
+  padding: 0 8px;
+  white-space: nowrap;
 }
 
 .icon-file-button:hover .icon-button-text {
@@ -818,4 +1310,29 @@ button:disabled:hover {
   .range-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* デバイス一覧のアイコン表示 */
+.device-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background-color: #334155;
+  background-size: cover;
+  background-position: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+  border: 2px solid #1e293b;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  margin-right: 8px;
+}
+
+.device-icon-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
 }
