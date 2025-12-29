@@ -1,5 +1,5 @@
-// bundle-static.js
-// 静的ファイルをスキャンして、リソースバンドルを作成するスクリプト
+// bundle-static-simple.js
+// 静的ファイルをバンドルして、より単純なhttp-serverを生成する
 
 import fs from 'fs';
 import path from 'path';
@@ -12,8 +12,8 @@ const __dirname = path.dirname(__filename);
 // ソースディレクトリ (HTML/CSS/JSがある場所)
 const sourceDir = path.join(__dirname, 'dist');
 
-// 出力ファイル - http-server.jsがインポートする
-const outputFile = path.join(__dirname, 'dist', 'bundled-resources.js');
+// 出力ファイル
+const outputFile = path.join(__dirname, 'dist', 'http-server.js');
 
 // 含めるファイル拡張子
 const extensions = [
@@ -25,7 +25,7 @@ const extensions = [
 const textExtensions = ['.html', '.css', '.js', '.json', '.svg', '.txt', '.md'];
 
 // 除外するファイル名
-const excludeFiles = ['bundled-resources.js', 'bundled-resources.js.map'];
+const excludeFiles = ['bundled-resources.js', 'bundled-resources.js.map', 'http-server.js', 'http-server.js.map'];
 
 // ディレクトリを再帰的にスキャンしてファイルを見つける関数
 function scanDirectory(dir, baseDir, result = {}) {
@@ -61,51 +61,38 @@ console.log('静的ファイルをスキャン中:', sourceDir);
 const files = scanDirectory(sourceDir, sourceDir);
 console.log('バンドル対象ファイル数:', Object.keys(files).length);
 
-// 出力ファイルの生成開始
-let outputContent = `// 自動生成されたリソースバンドル - 編集しないでください
-// 生成日時: ${new Date().toISOString()}
-
-// このファイルには、すべての静的リソースが文字列またはbase64データとして埋め込まれています
-
-const resources = {
-`;
-
-// 各ファイルを処理
+// ファイル内容をロードし、データオブジェクトを作成
+const fileContents = {};
 Object.entries(files).forEach(([relativePath, fullPath]) => {
   const ext = path.extname(relativePath).toLowerCase();
   const isText = textExtensions.includes(ext);
 
   console.log(`処理中: ${relativePath} (${isText ? 'テキスト' : 'バイナリ'})`);
 
-  if (isText) {
-    // テキストファイルは文字列として埋め込む
-    try {
-      let content = fs.readFileSync(fullPath, 'utf8')
-        .replace(/\\/g, '\\\\')
-        .replace(/`/g, '\\`')
-        .replace(/\${/g, '\\${');
-
-      outputContent += `  "${relativePath}": \`${content}\`,\n`;
-    } catch (err) {
-      console.error(`ファイル読み込みエラー ${relativePath}:`, err);
+  try {
+    if (isText) {
+      // テキストファイルはUTF-8で読み込み
+      fileContents[relativePath] = {
+        content: fs.readFileSync(fullPath, 'utf8'),
+        binary: false
+      };
+    } else {
+      // バイナリファイルはBase64で格納
+      fileContents[relativePath] = {
+        content: fs.readFileSync(fullPath).toString('base64'),
+        binary: true
+      };
     }
-  } else {
-    // バイナリファイルはbase64としてエンコード
-    try {
-      const content = fs.readFileSync(fullPath).toString('base64');
-      outputContent += `  "${relativePath}": { base64: "${content}" },\n`;
-    } catch (err) {
-      console.error(`ファイル読み込みエラー ${relativePath}:`, err);
-    }
+  } catch (err) {
+    console.error(`ファイル読み込みエラー ${relativePath}:`, err);
   }
 });
 
-// リソースオブジェクトを閉じる
-outputContent += `};\n\n`;
+// ファイルコンテンツをJSON文字列に変換
+const fileContentsJSON = JSON.stringify(fileContents, null, 2);
 
-// ヘルパー関数の追加
-outputContent += `// MIMEタイプのマッピング
-const mimeTypes = {
+// MIMEタイプマッピングを用意
+const mimeTypesMap = {
   '.html': 'text/html',
   '.js': 'application/javascript',
   '.css': 'text/css',
@@ -122,13 +109,45 @@ const mimeTypes = {
   '.eot': 'application/vnd.ms-fontobject'
 };
 
+// 単純化したHTTPサーバーコードを生成
+// コンパイル環境でも動作するようにimport.meta.urlの使用を避ける
+const httpServerCode = `// 自動生成されたバンドルHTTPサーバー
+// 生成日時: ${new Date().toISOString()}
+
+import http from 'http';
+import path from 'path';
+
+// 実行環境の判定
+const isNode = typeof process !== 'undefined' && process.versions && process.versions.node;
+const isBun = typeof process !== 'undefined' && process.argv[0] && (
+  process.argv[0].includes('bun') ||
+  process.argv[0].includes('bunx')
+);
+const isCompiled = process.argv[0] && (
+  process.argv[0].includes('LeverHTTP') ||
+  (typeof process.execPath === 'string' && !process.execPath.includes('node') && !process.execPath.includes('bun'))
+);
+
+console.log(\`実行環境: \${isNode ? 'Node.js' : isBun ? 'Bun' : process.argv[0] || '不明'}\`);
+console.log(\`コンパイル済み判定: \${isCompiled}\`);
+console.log(\`バンドルモード: true\`);
+
+const PORT = Number(process.env.HTTP_PORT || 8000);
+const HOST = process.env.HTTP_HOST || '127.0.0.1';
+
+// バンドルされた静的ファイル
+const BUNDLED_FILES = ${fileContentsJSON};
+
+// MIMEタイプマッピング
+const BUNDLED_MIME_TYPES = ${JSON.stringify(mimeTypesMap, null, 2)};
+
 // パスに対するMIMEタイプを取得
 function getMimeType(path) {
   const ext = path.substring(path.lastIndexOf('.')).toLowerCase();
-  return mimeTypes[ext] || 'application/octet-stream';
+  return BUNDLED_MIME_TYPES[ext] || 'application/octet-stream';
 }
 
-// リソースをUint8Arrayとして取得
+// リソースを取得する関数
 function getResource(path) {
   // 先頭のスラッシュを削除し、正規化
   path = path.startsWith('/') ? path.substring(1) : path;
@@ -139,42 +158,107 @@ function getResource(path) {
   }
 
   // リソースを取得
-  const resource = resources[path];
+  const resource = BUNDLED_FILES[path];
 
   if (!resource) {
     return null;
   }
 
-  // タイプに基づいてUint8Arrayに変換
-  if (typeof resource === 'string') {
-    // テキストリソース
-    return new TextEncoder().encode(resource);
-  } else if (resource.base64) {
-    // バイナリリソース（base64エンコード）
-    const binary = atob(resource.base64);
+  // バイナリかどうかに基づいてデータを変換
+  if (resource.binary) {
+    // Base64からUint8Arrayに変換
+    const binary = atob(resource.content);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) {
       bytes[i] = binary.charCodeAt(i);
     }
     return bytes;
+  } else {
+    // テキストはUint8Arrayにエンコード
+    return new TextEncoder().encode(resource.content);
+  }
+}
+
+// バンドルリソースから配信
+function serveFromBundle(pathname, res) {
+  try {
+    const mimeType = getMimeType(pathname);
+    const resource = getResource(pathname);
+
+    if (!resource) {
+      console.error(\`リソースが見つかりません: \${pathname}\`);
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end('404 Not Found');
+      return;
+    }
+
+    res.writeHead(200, {
+      'Content-Type': mimeType,
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    });
+    res.end(resource);
+  } catch (error) {
+    console.error(\`バンドルリソース取得エラー: \${pathname}\`, error);
+    res.writeHead(500, { 'Content-Type': 'text/plain' });
+    res.end('500 Internal Server Error');
+  }
+}
+
+// メイン処理
+const server = http.createServer((req, res) => {
+  // CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  // Handle OPTIONS preflight
+  if (req.method === 'OPTIONS') {
+    res.writeHead(200);
+    res.end();
+    return;
   }
 
-  return null;
-}
+  // Parse URL
+  const parsedUrl = new URL(req.url, \`http://\${HOST}:\${PORT}\`);
+  let pathname = parsedUrl.pathname;
 
-// 利用可能なすべてのリソースをリスト
-function listResources() {
-  return Object.keys(resources);
-}
+  // Default to index.html for root
+  if (pathname === '/') {
+    pathname = '/index.html';
+  }
 
-export {
-  resources,
-  getResource,
-  getMimeType,
-  listResources
-};
+  // バンドルリソースから配信
+  serveFromBundle(pathname.startsWith('/') ? pathname.substring(1) : pathname, res);
+});
+
+server.listen(PORT, HOST, () => {
+  console.log(\`HTTP server listening on http://\${HOST}:\${PORT}\`);
+  console.log(\`バンドルリソースから配信中 (ファイルシステムアクセスなし)\`);
+});
+
+// サーバーのエラーハンドリングを強化
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(\`ポート \${PORT} は既に使用されています。\`);
+    console.error(\`別のポートを試します...\`);
+
+    // 別のポートを試す
+    server.close();
+    const newPort = PORT + 1;
+    server.listen(newPort, HOST, () => {
+      console.log(\`代替ポート \${newPort} で起動しました: http://\${HOST}:\${newPort}\`);
+      console.log(\`環境変数 HTTP_PORT=\${newPort} を設定することで、このポートを永続的に使用できます\`);
+    });
+  } else {
+    console.error('サーバーエラー詳細:', err);
+    // 終了せずにエラーをログ
+    console.error('サーバー起動に失敗しましたが、処理を継続します');
+  }
+});
 `;
 
 // 出力ファイルに書き込み
-fs.writeFileSync(outputFile, outputContent, 'utf8');
-console.log(`リソースバンドルファイルを生成しました: ${outputFile}`);
+fs.writeFileSync(outputFile, httpServerCode, 'utf8');
+console.log(`静的リソースをインライン化したHTTPサーバーを生成しました: ${outputFile}`);
