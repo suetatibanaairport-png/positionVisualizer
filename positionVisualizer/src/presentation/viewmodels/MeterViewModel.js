@@ -65,6 +65,12 @@ export class MeterViewModel {
     EventBus.on(EventTypes.DEVICE_VALUE_UPDATED, (event) => {
       if (!event || !event.deviceId) return;
 
+      // 再生モード中はライブデバイスデータを無視
+      if (this.isPlaybackMode) {
+        this.logger.debug(`再生モード中のためライブデバイスデータを無視: ${event.deviceId}`);
+        return;
+      }
+
       const deviceId = event.deviceId;
       const deviceIndex = this.getOrAssignDeviceIndex(deviceId);
 
@@ -88,6 +94,19 @@ export class MeterViewModel {
         this.logger.debug(`再生データ値更新イベント: ${deviceId}, インデックス: ${deviceIndex}`);
         const value = this._extractNormalizedValue(event.value);
         this.setValue(deviceIndex, value, true, 'replay');
+      }
+    });
+
+    // デバイス切断イベントの監視
+    EventBus.on(EventTypes.DEVICE_DISCONNECTED, (event) => {
+      if (!event || !event.deviceId) return;
+
+      const deviceId = event.deviceId;
+      const deviceIndex = this.getDeviceIndex(deviceId);
+
+      if (deviceIndex >= 0) {
+        this.logger.debug(`デバイス切断イベント: ${deviceId}, インデックス: ${deviceIndex}`);
+        this.setValue(deviceIndex, null, false);
       }
     });
 
@@ -327,35 +346,18 @@ export class MeterViewModel {
    * @returns {boolean} 成功したかどうか
    */
   setVisible(index, visible) {
-    this.logger.debug(`[DEBUG TOGGLE] setVisible called for index: ${index}, visible: ${visible}`);
-
-    // 型チェック
-    this.logger.debug(`[DEBUG TOGGLE] index type: ${typeof index}, visible type: ${typeof visible}`);
-
     if (index < 0 || index >= this.options.maxDevices) {
-      this.logger.warn(`[DEBUG TOGGLE] Attempt to set visibility for invalid device index: ${index}`);
+      this.logger.warn(`Attempt to set visibility for invalid device index: ${index}`);
       return false;
     }
 
-    // 現在の状態をログ出力
-    this.logger.debug(`[DEBUG TOGGLE] Current state.visible array: ${JSON.stringify(this.state.visible)}`);
-    this.logger.debug(`[DEBUG TOGGLE] Current visibility for index ${index}: ${this.state.visible[index]}`);
-
     // Boolean型の値に変換して一貫性を確保
     const visibleBool = !!visible;
-    this.logger.debug(`[DEBUG TOGGLE] Converted visibleBool: ${visibleBool}`);
 
     if (this.state.visible[index] !== visibleBool) {
-      this.logger.debug(`[DEBUG TOGGLE] Visibility changed: Setting visibility for device ${index} to ${visibleBool ? 'visible' : 'hidden'}`);
       this.state.visible[index] = visibleBool;
-
-      // 更新後の状態をログ出力
-      this.logger.debug(`[DEBUG TOGGLE] Updated state.visible array: ${JSON.stringify(this.state.visible)}`);
-
       this._notifyChange();
       return true;
-    } else {
-      this.logger.debug(`[DEBUG TOGGLE] Visibility unchanged (already ${visibleBool ? 'visible' : 'hidden'}) for device ${index}`);
     }
     return false;
   }
@@ -422,9 +424,6 @@ export class MeterViewModel {
     if (isTemporary) {
       // 一時的な切断状態にする（接続状態は true のまま維持）
       this.state.tempDisconnected[index] = true;
-
-      // デバイスの接続状態を維持（UXの安定性のため）
-      // this.state.connected[index] = true;
 
       // 値は維持し、タイムアウト後に完全に切断する
       // 60秒間（通常のタイムアウトの6倍）一時的な切断状態を維持

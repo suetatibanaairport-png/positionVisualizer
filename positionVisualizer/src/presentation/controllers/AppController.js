@@ -2,14 +2,15 @@
  * AppController.js
  * アプリケーション全体のコントローラー
  * 各レイヤー間の調整や依存関係の注入を担当
+ *
+ * 責務: コーディネーション（Managerクラスへの委譲）
  */
 
-import { LogManagerComponent } from '../components/log/LogManagerComponent.js';
-import { PlaybackControlsComponent } from '../components/log/PlaybackControlsComponent.js';
-import { DeviceListViewModel } from '../viewmodels/DeviceListViewModel.js';
-import { ILogger } from '../services/ILogger.js';
-import { IEventEmitter } from '../services/IEventEmitter.js';
 import { EventTypes } from '../../domain/events/EventTypes.js';
+import { DeviceConnectionManager } from '../managers/DeviceConnectionManager.js';
+import { SessionManager } from '../managers/SessionManager.js';
+import { DeviceSettingsManager } from '../managers/DeviceSettingsManager.js';
+import { UIComponentManager } from '../managers/UIComponentManager.js';
 
 /**
  * アプリケーションコントローラークラス
@@ -34,18 +35,8 @@ export class AppController {
     this.logService = dependencies.logService || null;
     this.settingsRepository = dependencies.settingsRepository || null;
 
-    // デバイスリストViewModel（オプション）
-    this.deviceListViewModel = dependencies.deviceListViewModel || null;
-
-    // UIコンポーネント
-    this.logManagerComponent = null;
-    this.playbackControlsComponent = null;
-
     // 内部状態
-    this.updateInterval = null;
     this.monitoringEnabled = false;
-    this.recordingEnabled = false;
-    this.replayingEnabled = false;
 
     // インターフェースを介した依存（依存性逆転の原則を適用）
     this.eventEmitter = dependencies.eventEmitter || null;
@@ -58,16 +49,126 @@ export class AppController {
 
     // 設定
     this.options = {
-      monitorInterval: 100,   // モニタリング間隔（ミリ秒）
+      monitorInterval: 100,
       webSocketUrl: dependencies.webSocketUrl || 'ws://localhost:8123',
-      autoConnect: true,      // 自動接続するかどうか
+      autoConnect: true,
+      leverApiUrl: dependencies.leverApiUrl || 'http://127.0.0.1:5001',
       ...dependencies.options
     };
+
+    // Managerクラスの初期化
+    this._initializeManagers();
 
     // イベントハンドラーの設定
     this._setupEventHandlers();
 
     this.logger.debug('AppController initialized');
+  }
+
+  /**
+   * Managerクラスの初期化
+   * @private
+   */
+  _initializeManagers() {
+    // DeviceConnectionManager
+    this.deviceConnectionManager = new DeviceConnectionManager(
+      this.webSocketClient,
+      this.deviceService,
+      this.meterViewModel,
+      this.eventEmitter,
+      this.logger
+    );
+
+    // SessionManager
+    this.sessionManager = new SessionManager(
+      this.recordSessionUseCase,
+      this.replaySessionUseCase,
+      this.deviceService,
+      this.meterViewModel,
+      this.eventEmitter,
+      this.logger
+    );
+
+    // DeviceSettingsManager
+    this.deviceSettingsManager = new DeviceSettingsManager(
+      this.deviceService,
+      this.meterViewModel,
+      this.eventEmitter,
+      this.logger
+    );
+    this.deviceSettingsManager.setLeverApiUrl(this.options.leverApiUrl);
+
+    // UIComponentManager
+    this.uiComponentManager = new UIComponentManager(
+      this.options,
+      this.eventEmitter,
+      this.logger
+    );
+
+    // Manager間のコールバック設定
+    this._setupManagerCallbacks();
+  }
+
+  /**
+   * Manager間のコールバック設定
+   * @private
+   */
+  _setupManagerCallbacks() {
+    // DeviceConnectionManager: 記録用コールバック
+    this.deviceConnectionManager.setDeviceDataCallback((deviceId, value) => {
+      this.sessionManager.recordDeviceData(deviceId, value);
+    });
+
+    // DeviceConnectionManager: デバイスリスト更新コールバック
+    this.deviceConnectionManager.onDeviceListUpdate = () => {
+      this._updateDeviceListViewModel();
+    };
+
+    // SessionManager: モニタリング制御コールバック
+    this.sessionManager.onMonitoringStop = () => this.stopMonitoring();
+    this.sessionManager.onMonitoringStart = () => this.startMonitoring();
+
+    // SessionManager: デバイス設定コールバック
+    this.sessionManager.onDeviceNameSet = async (deviceId, name) => {
+      await this.deviceSettingsManager.setDeviceName(deviceId, name);
+    };
+    this.sessionManager.onDeviceIconSet = async (deviceId, iconUrl) => {
+      await this.deviceSettingsManager.setDeviceIcon(deviceId, iconUrl);
+    };
+
+    // SessionManager: 再生コントロール初期化コールバック
+    this.sessionManager.onPlaybackControlsInit = () => {
+      const containerId = 'playback-controls-container';
+      const container = document.getElementById(containerId);
+      if (container) {
+        this.uiComponentManager.initializePlaybackControls(containerId);
+      }
+    };
+
+    // UIComponentManager: デバイス表示/削除コールバック
+    this.uiComponentManager.onDeviceVisibilityChange = async (deviceId, isVisible) => {
+      await this.deviceSettingsManager.setDeviceVisibility(deviceId, isVisible);
+      this.meterViewModel._notifyChange();
+      this._updateDeviceListViewModel();
+    };
+    this.uiComponentManager.onDeviceRemove = async (deviceId) => {
+      await this.deviceSettingsManager.removeDevice(deviceId);
+    };
+
+    // DeviceSettingsManager: デバイスリスト更新コールバック
+    this.deviceSettingsManager.onDeviceListUpdate = () => {
+      this._updateDeviceListViewModel();
+    };
+
+    // UIComponentManagerの依存関係設定
+    this.uiComponentManager.setDependencies({
+      meterViewModel: this.meterViewModel,
+      meterRenderer: this.meterRenderer,
+      deviceService: this.deviceService,
+      logService: this.logService,
+      replaySessionUseCase: this.replaySessionUseCase,
+      appController: this
+    });
   }
 
   /**
@@ -81,19 +182,18 @@ export class AppController {
       // 1. ViewModelの変更監視
       this._setupViewModelBinding();
 
-      // 2. WebSocket接続の開始（設定がある場合）
+      // 2. WebSocket接続の開始（DeviceConnectionManagerに委譲）
       if (this.options.autoConnect && this.webSocketClient) {
-        await this._connectWebSocket();
+        await this.deviceConnectionManager.connect();
       }
 
-      // 3. デバイスリストViewModelの初期化（最優先で実行）
-      this._initializeDeviceListViewModel();
-
-      // デバイスリストViewModelが初期化されたかチェック
-      if (!this.deviceListViewModel) {
-        this.logger.warn('DeviceListViewModel initialization failed, will try to create one');
-        // DeviceListViewModelが存在しない場合、作成を試みる
-        this._createDeviceListViewModel();
+      // 3. デバイスリストViewModelの初期化（UIComponentManagerに委譲）
+      const deviceListVM = this.uiComponentManager.initializeDeviceListViewModel();
+      if (!deviceListVM) {
+        this.logger.warn('DeviceListViewModel initialization failed');
+      } else {
+        // 初期デバイスリストを設定
+        this._updateDeviceListViewModel();
       }
 
       // 4. デバイス値のモニタリング開始
@@ -101,13 +201,12 @@ export class AppController {
         this.startMonitoring();
       }
 
-      // 5. ログ管理コンポーネントの初期化（ある場合）
-      this._initializeLogComponents();
+      // 5. ログ管理コンポーネントの初期化（UIComponentManagerに委譲）
+      this.uiComponentManager.initializeLogComponents();
 
       // アプリケーション起動イベントを発行
       if (this.eventEmitter) {
         this.eventEmitter.emit('appStarted', { timestamp: Date.now() });
-        // 新しいイベント命名規則でも発行
         if (typeof EventTypes !== 'undefined' && EventTypes.APP_STARTED) {
           this.eventEmitter.emit(EventTypes.APP_STARTED, { timestamp: Date.now() });
         }
@@ -128,118 +227,9 @@ export class AppController {
   _setupViewModelBinding() {
     if (this.meterViewModel && this.meterRenderer) {
       this.meterViewModel.onChange(state => {
-        // レンダラーの更新
         this.meterRenderer.update(state);
       });
       this.logger.debug('ViewModel binding setup complete');
-    }
-  }
-
-  /**
-   * WebSocket接続
-   * @private
-   * @returns {Promise<void>}
-   */
-  async _connectWebSocket() {
-    if (!this.webSocketClient) {
-      this.logger.warn('WebSocketClient not available');
-      return;
-    }
-
-    try {
-      await this.webSocketClient.connect();
-      this.logger.info('WebSocket connected successfully');
-
-      // デバイスメッセージのリスナー登録 - 新しいインターフェースを使用
-      this.webSocketClient.on('device', this._handleDeviceMessage.bind(this));
-      this.webSocketClient.on('device_disconnected', this._handleDeviceDisconnected.bind(this));
-    } catch (error) {
-      this.logger.error('WebSocket connection error:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * デバイスメッセージの処理
-   * @private
-   * @param {Object} message デバイスメッセージ
-   */
-  _handleDeviceMessage(message) {
-    if (!message || !message.device_id || !message.data) {
-      this.logger.debug('Invalid device message received');
-      return;
-    }
-
-    const deviceId = message.device_id;
-    const data = message.data;
-
-    this.logger.debug(`Device message received from ${deviceId}:`, data);
-
-    // デバイス登録
-    this.deviceService.registerDevice(deviceId, { name: message.name }).then(device => {
-      // デバイスインデックスの取得
-      const deviceIndex = this.meterViewModel.getOrAssignDeviceIndex(deviceId);
-
-      if (deviceIndex >= 0) {
-        // 名前の設定
-        if (device.name) {
-          this.meterViewModel.setName(deviceIndex, device.name);
-        }
-
-        // アイコンの設定
-        if (device.iconUrl) {
-          this.meterViewModel.setIcon(deviceIndex, device.iconUrl);
-        }
-
-        // 値の設定
-        let value = null;
-        if (typeof data.value === 'number') {
-          value = data.value;
-        } else if (typeof data.smoothed === 'number') {
-          value = data.smoothed;
-        } else if (typeof data.raw === 'number') {
-          value = data.raw;
-        } else if (typeof data.calibrated_value === 'number') {
-          value = data.calibrated_value;
-        }
-
-        if (value !== null) {
-          this.meterViewModel.setValue(deviceIndex, value, true);
-
-          // 記録が有効な場合、値を記録
-          if (this.recordingEnabled && this.recordSessionUseCase) {
-            this.recordSessionUseCase.recordDeviceData(deviceId, { rawValue: value });
-          }
-        }
-      }
-    }).catch(error => {
-      this.logger.error(`Error handling device message for ${deviceId}:`, error);
-    });
-  }
-
-  /**
-   * デバイス切断の処理
-   * @private
-   * @param {Object} message デバイス切断メッセージ
-   */
-  _handleDeviceDisconnected(message) {
-    if (!message || !message.device_id) {
-      this.logger.debug('Invalid device disconnection message received');
-      return;
-    }
-
-    const deviceId = message.device_id;
-    this.logger.debug(`Device disconnected: ${deviceId}`);
-
-    const deviceIndex = this.meterViewModel.getDeviceIndex(deviceId);
-
-    if (deviceIndex >= 0) {
-      // デバイスの切断を反映
-      this.meterViewModel.setValue(deviceIndex, null, false);
-      this.deviceService.disconnectDevice(deviceId, 'websocket_disconnect')
-        .catch(error => {
-          this.logger.error(`Error disconnecting device ${deviceId}:`, error);
-        });
     }
   }
 
@@ -342,10 +332,11 @@ export class AppController {
    * @private
    */
   _updateDeviceListViewModel() {
-    if (this.deviceListViewModel && typeof this.deviceListViewModel.updateDeviceList === 'function') {
+    const deviceListViewModel = this.uiComponentManager?.getDeviceListViewModel();
+    if (deviceListViewModel && typeof deviceListViewModel.updateDeviceList === 'function') {
       this.getAllDevices(true).then(devices => {
         this.logger.debug(`Updating DeviceListViewModel with ${devices.length} devices`);
-        this.deviceListViewModel.updateDeviceList(devices);
+        deviceListViewModel.updateDeviceList(devices);
       }).catch(error => {
         this.logger.warn(`Failed to update DeviceListViewModel: ${error.message}`);
       });
@@ -439,22 +430,16 @@ export class AppController {
         this.logger.warn(`Failed to update device info in DeviceService: ${error.message}`);
       });
     }
-
-    // DeviceListViewModelも更新（存在する場合）
-    if (this.deviceListViewModel && typeof this.deviceListViewModel.updateDeviceList === 'function') {
-      // 現在のデバイス一覧を取得して更新
-      this.getAllDevices(true).then(devices => {
-        this.deviceListViewModel.updateDeviceList(devices);
-      }).catch(error => {
-        this.logger.warn(`Failed to update DeviceListViewModel: ${error.message}`);
-      });
-    }
   }
 
   /**
    * デバイス値更新イベントハンドラー
    * @private
    * @param {Object} event イベントデータ
+   *
+   * 注意: MeterViewModelがDEVICE_VALUE_UPDATEDイベントを処理するため、
+   * このメソッドでのsetValue()呼び出しは削除されました。
+   * 必要に応じて、アプリケーションレベルの調整処理のみをここで行います。
    */
   _handleDeviceValueUpdated(event) {
     const { deviceId, value } = event;
@@ -466,111 +451,8 @@ export class AppController {
 
     this.logger.debug(`Device value updated event for ${deviceId}:`, value);
 
-    // ログ再生中の場合は、通常のデバイス値更新を無視する（競合を防ぐため）
-    if (this.replayingEnabled) {
-      // イベント自体がログ再生から来ているか確認（データソースを確認）
-      const isReplayEvent = event.source === 'replay' ||
-                            (event.metadata && event.metadata.source === 'replay');
-
-      if (!isReplayEvent) {
-        this.logger.debug(`Ignoring live device update during replay for device ${deviceId}`);
-        return; // 再生中で、かつ通常のデバイス値更新なら処理せずに終了
-      }
-    }
-
-    // デバイスIDからインデックスを取得
-    let deviceIndex = this.meterViewModel.getDeviceIndex(deviceId);
-
-    // デバイスインデックスが見つからない場合は新しいインデックスを割り当て
-    if (deviceIndex < 0) {
-      this.logger.info(`Device index not found for ${deviceId}, assigning new index`);
-      deviceIndex = this.meterViewModel.getOrAssignDeviceIndex(deviceId);
-
-      if (deviceIndex < 0) {
-        this.logger.error(`Failed to assign device index for ${deviceId}`);
-        return;
-      }
-
-      // 接続状態を確実に設定
-      this.meterViewModel.state.connected[deviceIndex] = true;
-      this.logger.debug(`Assigned device ${deviceId} to index ${deviceIndex}`);
-    }
-
-    // 値の抽出（様々な形式に対応）
-    let normalizedValue = null;
-    let rawValue = null;
-
-    if (value) {
-      // 異なる形式のオブジェクトに対応
-      if (typeof value === 'object') {
-        // normalizedValue/rawValue形式
-        if (value.normalizedValue !== undefined) {
-          normalizedValue = value.normalizedValue;
-        }
-        if (value.rawValue !== undefined) {
-          rawValue = value.rawValue;
-        }
-        // raw/normalized形式
-        else if (value.normalized !== undefined) {
-          normalizedValue = value.normalized;
-        }
-        else if (value.raw !== undefined) {
-          rawValue = value.raw;
-        }
-        // その他の可能性のあるフィールド
-        else if (value.value !== undefined) {
-          normalizedValue = value.value;
-          rawValue = value.value;
-        }
-        else if (value.calibrated_value !== undefined) {
-          normalizedValue = value.calibrated_value;
-          rawValue = value.calibrated_value;
-        }
-        else if (value.smoothed !== undefined) {
-          normalizedValue = value.smoothed;
-          rawValue = value.smoothed;
-        }
-      }
-      // 数値の場合は直接使用
-      else if (typeof value === 'number') {
-        normalizedValue = value;
-        rawValue = value;
-      }
-    }
-
-    // デバッグログ（現在の処理モードを含める）
-    this.logger.debug(`Setting value for device ${deviceId} (index ${deviceIndex}, mode: ${this.replayingEnabled ? 'replay' : 'live'}):`, {
-      normalizedValue,
-      rawValue,
-      connected: true
-    });
-
-    // 値を設定
-    let valueSet = false;
-
-    // 正規化値があれば優先して使用
-    if (normalizedValue !== null && normalizedValue !== undefined) {
-      this.meterViewModel.setValue(deviceIndex, normalizedValue, true);
-      this.logger.debug(`Updated device ${deviceId} with normalized value: ${normalizedValue}`);
-      valueSet = true;
-    }
-    // なければ生値を使用
-    else if (rawValue !== null && rawValue !== undefined) {
-      this.meterViewModel.setValue(deviceIndex, rawValue, true);
-      this.logger.debug(`Updated device ${deviceId} with raw value: ${rawValue}`);
-      valueSet = true;
-    }
-
-    // どの値も設定できなかった場合は警告
-    if (!valueSet) {
-      this.logger.warn(`No valid value could be extracted for device ${deviceId}:`, value);
-
-      // 再生モードの場合は、とりあえず0を設定して動きを見せる（デバッグ用）
-      if (this.replayingEnabled) {
-        this.logger.debug(`Setting fallback value 0 for replay mode device ${deviceId}`);
-        this.meterViewModel.setValue(deviceIndex, 0, true);
-      }
-    }
+    // MeterViewModelがイベント処理を行うため、ここでは何もしない
+    // 将来的にアプリケーションレベルの調整処理が必要な場合はここに追加
   }
 
   /**
@@ -665,938 +547,158 @@ export class AppController {
   }
 
   /**
-   * 記録の開始
+   * 記録の開始（SessionManagerに委譲）
    * @returns {Promise<boolean>} 成功したかどうか
    */
   async startRecording() {
-    if (this.recordingEnabled || !this.recordSessionUseCase) {
-      return false;
-    }
-
-    this.logger.info('Starting recording session');
-
-    // 初期値を取得
-    const initialValues = {};
-    const connectedDevices = await this.deviceService.getAllDevices(true);
-
-    for (const device of connectedDevices) {
-      const deviceInfo = await this.deviceService.getDeviceInfo(device.id);
-      if (deviceInfo && deviceInfo.value) {
-        initialValues[device.id] = deviceInfo.value;
-      }
-    }
-
-    // 記録開始
-    const success = await this.recordSessionUseCase.startRecording(initialValues);
-
-    if (success) {
-      this.recordingEnabled = true;
-      this.logger.info('Recording started successfully');
-      return true;
-    } else {
-      this.logger.warn('Failed to start recording');
-      return false;
-    }
+    return await this.sessionManager.startRecording();
   }
 
   /**
-   * 記録の停止
+   * 記録の停止（SessionManagerに委譲）
    * @returns {Promise<boolean>} 成功したかどうか
    */
   async stopRecording() {
-    if (!this.recordingEnabled || !this.recordSessionUseCase) {
-      return false;
-    }
-
-    this.logger.info('Stopping recording session');
-
-    // 記録停止
-    const entries = await this.recordSessionUseCase.stopRecording();
-    this.recordingEnabled = false;
-
-    if (entries.length > 0) {
-      this.logger.info(`Recording stopped with ${entries.length} entries`);
-      return true;
-    } else {
-      this.logger.warn('Recording stopped with no entries');
-      return false;
-    }
+    return await this.sessionManager.stopRecording();
   }
 
   /**
-   * 再生の開始
+   * 再生の開始（SessionManagerに委譲）
    * @param {string} sessionId セッションID
    * @returns {Promise<boolean>} 成功したかどうか
    */
   async startReplay(sessionId) {
-    // すでに再生中の場合は一度停止してから再開
-    if (this.replayingEnabled && this.replaySessionUseCase) {
-      this.logger.info('Stopping current replay before starting new one');
-      this.stopReplay();
-
-      // 少し待機して状態が完全に切り替わるようにする
-      await new Promise(resolve => setTimeout(resolve, 500));
-    } else if (!this.replaySessionUseCase) {
-      this.logger.error('ReplaySessionUseCase not available');
-      return false;
-    }
-
-    this.logger.info(`Starting replay for session: ${sessionId}`);
-
-    // モニタリングが有効なら一時停止
-    const wasMonitoring = this.monitoringEnabled;
-    if (wasMonitoring) {
-      this.stopMonitoring();
-    }
-
-    // セッションをロード
-    const success = await this.replaySessionUseCase.loadSession(sessionId);
-
-    if (success) {
-      // セッションデータを取得
-      const sessionData = this.replaySessionUseCase.getSessionData();
-      if (!sessionData) {
-        this.logger.error('Failed to get session data');
-        return false;
-      }
-
-      if (!sessionData.entries || !Array.isArray(sessionData.entries)) {
-        this.logger.error('Session data has no entries or entries is not an array');
-        return false;
-      }
-
-      this.logger.info('Session data loaded:', {
-        entryCount: sessionData.entries.length,
-        deviceCount: sessionData.metadata?.deviceCount || 'unknown',
-        metadata: sessionData.metadata || 'no metadata'
-      });
-
-      // エントリに含まれるすべてのデバイスを特定
-      const deviceIdsInEntries = new Set(sessionData.entries.map(entry => entry.deviceId));
-      this.logger.info(`Devices in entries: ${Array.from(deviceIdsInEntries).join(', ')}`);
-
-      // デバイス情報のログ出力
-      if (sessionData.metadata && sessionData.metadata.deviceInfo) {
-        this.logger.info('Device info from metadata:');
-        Object.entries(sessionData.metadata.deviceInfo).forEach(([id, info]) => {
-          this.logger.info(`  ${id}: name=${info.name || 'none'}, icon=${info.iconUrl ? 'present' : 'none'}`);
-        });
-      } else {
-        this.logger.warn('No device info in metadata');
-      }
-
-      // すべてのデバイスが初期状態で登録されるようにする
-      for (const deviceId of deviceIdsInEntries) {
-        // デフォルト情報でデバイスを登録（後でメタデータから上書き）
-        this.logger.info(`Pre-registering device: ${deviceId}`);
-        await this.deviceService.registerDevice(deviceId, { name: deviceId });
-
-        // デバイスインデックスを確実に割り当てる
-        const deviceIndex = this.meterViewModel.getOrAssignDeviceIndex(deviceId);
-        this.logger.info(`Assigned device ${deviceId} to index ${deviceIndex}`);
-
-        if (deviceIndex >= 0) {
-          // 接続状態と表示状態を確実に設定
-          this.meterViewModel.state.connected[deviceIndex] = true;
-          this.meterViewModel.setVisible(deviceIndex, true);
-
-          // 初期値を仮で設定（表示が確実にされるように）
-          this.meterViewModel.setValue(deviceIndex, 50, true);
-        }
-      }
-
-      // デバイス情報の設定（アイコンや名前）
-      if (sessionData && sessionData.metadata && sessionData.metadata.deviceInfo) {
-        const deviceInfo = sessionData.metadata.deviceInfo;
-        this.logger.info(`Device info from metadata:`, deviceInfo);
-
-        for (const [deviceId, info] of Object.entries(deviceInfo)) {
-          // デバイスの登録/更新
-          this.logger.info(`Registering device with info: ${deviceId}`, info);
-          await this.deviceService.registerDevice(deviceId, info);
-
-          // アイコン情報があればアイコンを設定
-          if (info.iconUrl) {
-            this.logger.info(`Setting icon for device ${deviceId}`);
-            await this.setDeviceIcon(deviceId, info.iconUrl);
-          }
-
-          // デバイス名があればデバイス名を設定
-          if (info.name) {
-            this.logger.info(`Setting name for device ${deviceId}: ${info.name}`);
-            await this.setDeviceName(deviceId, info.name);
-          }
-
-          // デバイスインデックスを取得
-          const deviceIndex = this.meterViewModel.getDeviceIndex(deviceId);
-          if (deviceIndex >= 0) {
-            this.logger.info(`Device ${deviceId} has index ${deviceIndex}`);
-
-            // 接続状態を強制的にONにする
-            this.meterViewModel.state.connected[deviceIndex] = true;
-            this.meterViewModel._notifyChange();
-          } else {
-            this.logger.warn(`Failed to get index for device ${deviceId}`);
-          }
-        }
-      } else {
-        this.logger.warn('No device info in session metadata');
-      }
-
-      // 再生開始前にすべてのデバイスの接続状態を確認
-      // deviceIdsInEntriesを使ってすべてのデバイスを最終確認
-      this.logger.info('Final device connection check before starting playback');
-      for (const deviceId of deviceIdsInEntries) {
-        const deviceIndex = this.meterViewModel.getDeviceIndex(deviceId);
-        if (deviceIndex >= 0) {
-          // 接続状態と表示状態を再度強制的に設定
-          this.meterViewModel.state.connected[deviceIndex] = true;
-          this.meterViewModel.setVisible(deviceIndex, true);
-
-          this.logger.info(`Final check: Device ${deviceId} (index ${deviceIndex}) is connected and visible`);
-        }
-      }
-
-      // 再生開始前に2回通知を行う（確実に更新されるように）
-      this.meterViewModel._notifyChange();
-      setTimeout(() => this.meterViewModel._notifyChange(), 0);
-
-      // 再生コントロールの初期化（存在すれば）
-      if (!this.playbackControlsComponent) {
-        const playbackControlsContainerId = 'playback-controls-container';
-        const container = document.getElementById(playbackControlsContainerId);
-        if (container) {
-          this._initializePlaybackControls(playbackControlsContainerId);
-        }
-      }
-
-      // 再生開始
-      this.replaySessionUseCase.play();
-      this.replayingEnabled = true;
-      this.logger.info('Replay started successfully');
-      return true;
-    } else {
-      // モニタリングを再開
-      if (wasMonitoring) {
-        this.startMonitoring();
-      }
-      this.logger.warn(`Failed to load session: ${sessionId}`);
-      return false;
-    }
+    return await this.sessionManager.startReplay(sessionId);
   }
 
   /**
-   * 再生の停止
+   * 再生の停止（SessionManagerに委譲）
    * @returns {boolean} 成功したかどうか
    */
   stopReplay() {
-    if (!this.replayingEnabled || !this.replaySessionUseCase) {
-      return false;
-    }
-
-    this.logger.info('Stopping replay');
-
-    // 再生停止
-    this.replaySessionUseCase.stop();
-    this.replayingEnabled = false;
-
-    // モニタリングを再開
-    this.startMonitoring();
-
-    return true;
+    return this.sessionManager.stopReplay();
   }
 
   /**
-   * 再生の一時停止
+   * 再生の一時停止（SessionManagerに委譲）
    * @returns {boolean} 成功したかどうか
    */
   pauseReplay() {
-    if (!this.replayingEnabled || !this.replaySessionUseCase) {
-      return false;
-    }
-
-    this.logger.info('Pausing replay');
-
-    // 再生一時停止
-    return this.replaySessionUseCase.pause();
+    return this.sessionManager.pauseReplay();
   }
 
   /**
-   * 再生の再開
+   * 再生の再開（SessionManagerに委譲）
    * @returns {boolean} 成功したかどうか
    */
   resumeReplay() {
-    if (!this.replayingEnabled || !this.replaySessionUseCase) {
-      return false;
-    }
-
-    this.logger.info('Resuming replay');
-
-    // 再生再開
-    return this.replaySessionUseCase.play();
+    return this.sessionManager.resumeReplay();
   }
 
   /**
-   * 名前の設定
+   * 記録中かどうか
+   * @returns {boolean}
+   */
+  isRecording() {
+    return this.sessionManager.isRecording();
+  }
+
+  /**
+   * 再生中かどうか
+   * @returns {boolean}
+   */
+  isReplaying() {
+    return this.sessionManager.isReplaying();
+  }
+
+  /**
+   * モニタリング中かどうか
+   * @returns {boolean}
+   */
+  isMonitoring() {
+    return this.monitoringEnabled;
+  }
+
+  /**
+   * 名前の設定（DeviceSettingsManagerに委譲）
    * @param {string} deviceId デバイスID
    * @param {string} name デバイス名
    * @returns {Promise<boolean>} 成功したかどうか
    */
   async setDeviceName(deviceId, name) {
-    if (!deviceId || !name) {
-      return false;
-    }
-
-    this.logger.debug(`Setting device name: ${deviceId} -> ${name}`);
-
-    // デバイス名を設定
-    const success = await this.deviceService.setDeviceName(deviceId, name);
-
-    if (success) {
-      // MeterViewModelを更新
-      const deviceIndex = this.meterViewModel.getDeviceIndex(deviceId);
-      if (deviceIndex >= 0) {
-        this.meterViewModel.setName(deviceIndex, name);
-
-        // 明示的に状態変更を通知
-        this.meterViewModel._notifyChange();
-        this.logger.debug(`Device name updated in MeterViewModel and notification sent: ${deviceId} -> ${name}`);
-      }
-
-      // DeviceListViewModelも更新（存在する場合）
-      this._updateDeviceListViewModel();
-
-      // 変更イベントを発行して他のコンポーネントに通知（オーバーレイウィンドウなど）
-      if (this.eventEmitter) {
-        this.logger.debug('Emitting device updated event to propagate name change');
-        this.eventEmitter.emit(EventTypes.DEVICE_UPDATED, {
-          deviceId,
-          device: {
-            id: deviceId,
-            name: name,
-            // 他の既存のプロパティを含める
-            iconUrl: this.deviceService.getDeviceIconUrl?.(deviceId)
-          }
-        });
-      }
-
-      return true;
-    }
-
-    return false;
+    return await this.deviceSettingsManager.setDeviceName(deviceId, name);
   }
 
   /**
-   * アイコンの設定
+   * アイコンの設定（DeviceSettingsManagerに委譲）
    * @param {string} deviceId デバイスID
    * @param {string} iconUrl アイコンURL
    * @returns {Promise<boolean>} 成功したかどうか
    */
   async setDeviceIcon(deviceId, iconUrl) {
-    if (!deviceId || !iconUrl) {
-      return false;
-    }
-
-    this.logger.debug(`Setting device icon: ${deviceId} -> ${iconUrl}`);
-
-    // デバイスアイコンを設定
-    const success = await this.deviceService.setDeviceIcon(deviceId, iconUrl);
-
-    if (success) {
-      // MeterViewModelを更新
-      const deviceIndex = this.meterViewModel.getDeviceIndex(deviceId);
-      if (deviceIndex >= 0) {
-        this.meterViewModel.setIcon(deviceIndex, iconUrl);
-
-        // 明示的に状態変更を通知
-        this.meterViewModel._notifyChange();
-        this.logger.debug(`Device icon updated in MeterViewModel and notification sent: ${deviceId}`);
-      }
-
-      // DeviceListViewModelも更新（存在する場合）
-      this._updateDeviceListViewModel();
-
-      // 変更イベントを発行して他のコンポーネントに通知（オーバーレイウィンドウなど）
-      if (this.eventEmitter) {
-        this.logger.debug('Emitting device updated event to propagate icon change');
-        this.eventEmitter.emit(EventTypes.DEVICE_UPDATED, {
-          deviceId,
-          device: {
-            id: deviceId,
-            iconUrl: iconUrl,
-            // 他の既存のプロパティを含める
-            name: this.deviceService.getDeviceName?.(deviceId)
-          }
-        });
-      }
-
-      return true;
-    }
-
-    return false;
+    return await this.deviceSettingsManager.setDeviceIcon(deviceId, iconUrl);
   }
 
   /**
-   * デバイスを削除
+   * デバイスを削除（DeviceSettingsManagerに委譲）
    * @param {string} deviceId デバイスID
    * @returns {Promise<boolean>} 成功したかどうか
    */
   async removeDevice(deviceId) {
-    if (!deviceId) {
-      return false;
-    }
-
-    this.logger.info(`Removing device: ${deviceId}`);
-
-    try {
-      // DeviceServiceからデバイスを削除
-      const success = await this.deviceService.removeDevice(deviceId);
-
-      if (success) {
-        // MeterViewModelからデバイスを削除
-        this.meterViewModel.removeDevice(deviceId);
-
-        // DeviceListViewModelを更新
-        this._updateDeviceListViewModel();
-
-        // イベントを発行
-        if (this.eventEmitter) {
-          this.eventEmitter.emit(EventTypes.DEVICE_REMOVED, { deviceId });
-        }
-
-        this.logger.info(`Device removed successfully: ${deviceId}`);
-        return true;
-      }
-
-      return false;
-    } catch (error) {
-      this.logger.error(`Error removing device ${deviceId}:`, error);
-      return false;
-    }
+    return await this.deviceSettingsManager.removeDevice(deviceId);
   }
 
   /**
-   * デバイスの表示/非表示を設定
+   * デバイスの表示/非表示を設定（DeviceSettingsManagerに委譲）
    * @param {string} deviceId デバイスID
    * @param {boolean} isVisible 表示するかどうか
    * @returns {Promise<boolean>} 成功したかどうか
    */
   async setDeviceVisibility(deviceId, isVisible) {
-    if (!deviceId) {
-      return false;
-    }
-
-    this.logger.debug(`Setting device visibility: ${deviceId} -> ${isVisible ? 'visible' : 'hidden'}`);
-
-    try {
-      // 現在のデバイス表示状態を取得
-      const deviceIndex = this.meterViewModel.getDeviceIndex(deviceId);
-      if (deviceIndex >= 0) {
-        // MeterViewModel経由でデバイス表示状態を更新
-        this.meterViewModel.setVisible(deviceIndex, isVisible);
-
-        // 明示的に状態変更を通知
-        this.meterViewModel._notifyChange();
-        this.logger.debug(`Device visibility updated in MeterViewModel and notification sent: ${deviceId} -> ${isVisible ? 'visible' : 'hidden'}`);
-
-        // デバイスサービスが実装されていれば、そちらにも通知
-        if (this.deviceService && typeof this.deviceService.setDeviceVisibility === 'function') {
-          await this.deviceService.setDeviceVisibility(deviceId, isVisible);
-          this.logger.debug(`Device visibility updated in DeviceService: ${deviceId} -> ${isVisible ? 'visible' : 'hidden'}`);
-        }
-
-        // DeviceListViewModelも更新（存在する場合）
-        this._updateDeviceListViewModel();
-
-        // 変更イベントを発行して他のコンポーネントに通知（オーバーレイウィンドウなど）
-        if (this.eventEmitter) {
-          this.logger.debug('Emitting device updated event to propagate visibility change');
-          this.eventEmitter.emit(EventTypes.DEVICE_UPDATED, {
-            deviceId,
-            device: {
-              id: deviceId,
-              visible: isVisible,
-              // 他の既存のプロパティを含める
-              name: this.deviceService.getDeviceName?.(deviceId),
-              iconUrl: this.deviceService.getDeviceIconUrl?.(deviceId)
-            }
-          });
-        }
-
-        return true;
-      }
-
-      this.logger.warn(`Device with ID ${deviceId} not found in MeterViewModel`);
-      return false;
-    } catch (error) {
-      this.logger.error(`Error setting device visibility for ${deviceId}:`, error);
-      return false;
-    }
+    return await this.deviceSettingsManager.setDeviceVisibility(deviceId, isVisible);
   }
 
   /**
-   * デバイスのリセット
+   * デバイスのリセット（DeviceSettingsManagerに委譲）
    * @returns {Promise<boolean>} 成功したかどうか
    */
   async resetDevices() {
-    this.logger.info('Resetting all devices');
-
-    try {
-      // すべてのデバイスをリセット
-      const success = await this.deviceService.resetAllDevices();
-
-      if (success) {
-        // MeterViewModelのすべてのデバイスマッピングをクリア
-        if (this.meterViewModel.deviceMapping) {
-          const deviceIds = Array.from(this.meterViewModel.deviceMapping.keys());
-          deviceIds.forEach(deviceId => {
-            this.meterViewModel.removeDevice(deviceId);
-          });
-          this.logger.debug(`Removed ${deviceIds.length} devices from MeterViewModel`);
-        }
-
-        // MeterViewModelをリセット
-        this.meterViewModel.reset();
-        this.logger.debug('MeterViewModel reset successful');
-
-        // DeviceListViewModelもリセット（存在する場合）
-        if (this.deviceListViewModel && typeof this.deviceListViewModel.updateDeviceList === 'function') {
-          // 空の配列で更新することでリセット
-          this.deviceListViewModel.updateDeviceList([]);
-          this.logger.debug('DeviceListViewModel reset successful');
-        } else {
-          this.logger.debug('DeviceListViewModel not available for reset');
-        }
-
-        // イベント発行（新しい命名規則）
-        if (this.eventEmitter) {
-          this.logger.debug('Emitting device reset events');
-          this.eventEmitter.emit(EventTypes.DEVICES_RESET, {
-            timestamp: Date.now()
-          });
-
-          // 後方互換性のため
-          this.eventEmitter.emit('devicesReset', {
-            timestamp: Date.now()
-          });
-        }
-
-        return true;
-      } else {
-        this.logger.warn('Device service reset returned false');
-        return false;
-      }
-    } catch (error) {
-      this.logger.error('Error resetting devices:', error);
-      return false;
-    }
+    const deviceListVM = this.uiComponentManager.getDeviceListViewModel();
+    return await this.deviceSettingsManager.resetDevices(deviceListVM);
   }
 
   /**
-   * デバイスの再スキャン
-   * LeverAPIの/api/scanエンドポイントを呼び出してデバイス検出を開始
+   * デバイスの再スキャン（DeviceSettingsManagerに委譲）
    * @returns {Promise<boolean>} 成功したかどうか
    */
   async scanDevices() {
-    this.logger.info('Scanning for devices via LeverAPI');
-
-    try {
-      // LeverAPI URLを取得（デフォルトは http://127.0.0.1:5001）
-      const leverApiUrl = this.options?.leverApiUrl || 'http://127.0.0.1:5001';
-      const scanEndpoint = `${leverApiUrl}/api/scan`;
-
-      this.logger.debug(`Sending scan request to: ${scanEndpoint}`);
-
-      // POSTリクエストを送信
-      const response = await fetch(scanEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        this.logger.info('Device scan initiated successfully:', data);
-        return true;
-      } else {
-        this.logger.warn(`Device scan request failed with status ${response.status}`);
-        return false;
-      }
-    } catch (error) {
-      this.logger.error('Error scanning for devices:', error);
-      return false;
-    }
+    return await this.deviceSettingsManager.scanDevices();
   }
 
   /**
-   * すべてのデバイスを取得
+   * すべてのデバイスを取得（DeviceSettingsManagerに委譲）
    * @param {boolean} connectedOnly 接続済みデバイスのみ取得するかどうか
    * @returns {Promise<Array>} デバイスの配列
    */
   async getAllDevices(connectedOnly = false) {
-    if (!this.deviceService) {
-      this.logger.warn('DeviceService not available for getAllDevices');
-      return [];
-    }
-    return await this.deviceService.getAllDevices(connectedOnly);
+    return await this.deviceSettingsManager.getAllDevices(connectedOnly);
   }
 
   /**
-   * ログコンポーネントの初期化
-   * @private
-   */
-  _initializeLogComponents() {
-    // ログ管理と再生が可能な場合のみ
-    if (this.logService && this.replaySessionUseCase) {
-      this.logger.debug('Initializing log components');
-
-      try {
-        // ログ管理コンポーネントの初期化
-        const logManagerContainerId = 'log-manager-container';
-        if (document.getElementById(logManagerContainerId)) {
-          this.logger.debug('Initializing LogManagerComponent');
-          this.logManagerComponent = new LogManagerComponent(
-            logManagerContainerId,
-            this,
-            this.logService
-          );
-        } else {
-          this.logger.debug(`LogManagerComponent container not found: ${logManagerContainerId}`);
-        }
-
-        // ログ再生コンポーネントの初期表示を非表示に設定（動的に生成されるコンポーネント）
-        const logReplayComponent = document.getElementById('log-replay-component-dynamic') ||
-                                  document.querySelector('.log-replay-component');
-        if (logReplayComponent) {
-          this.logger.debug('Setting log replay component to hidden');
-          logReplayComponent.style.display = 'none';
-        }
-
-        // 再生コントロールコンポーネントは動的に作成される
-        // この時点では初期化しない
-      } catch (error) {
-        this.logger.error('Error initializing log components:', error);
-      }
-    }
-  }
-
-  /**
-   * 再生コントロールコンポーネントの初期化
-   * @private
-   * @param {string} containerId コンテナID
-   * @returns {PlaybackControlsComponent|null} 初期化されたコンポーネントまたはnull
-   */
-  _initializePlaybackControls(containerId) {
-    if (!this.replaySessionUseCase || !containerId) {
-      this.logger.warn('Cannot initialize playback controls: missing dependencies or container');
-      return null;
-    }
-
-    try {
-      // 再生コントロールのコンテナを取得
-      const container = document.getElementById(containerId);
-      if (!container) {
-        this.logger.error(`Playback controls container not found: ${containerId}`);
-        return null;
-      }
-
-      // コンテナを確実に表示状態に設定
-      container.style.display = 'block';
-      container.style.visibility = 'visible';
-      container.style.opacity = '1';
-
-      this.logger.debug(`Initializing PlaybackControlsComponent in ${containerId}`);
-
-      // 既存のコンポーネントがある場合は削除
-      if (this.playbackControlsComponent) {
-        try {
-          if (typeof this.playbackControlsComponent.destroy === 'function') {
-            this.playbackControlsComponent.destroy();
-            this.logger.debug('Destroyed existing PlaybackControlsComponent');
-          }
-        } catch (destroyError) {
-          this.logger.warn('Error destroying existing PlaybackControlsComponent:', destroyError);
-        }
-      }
-
-      // 新しいPlaybackControlsComponentを作成
-      this.playbackControlsComponent = new PlaybackControlsComponent(
-        containerId,
-        this,
-        this.replaySessionUseCase
-      );
-
-      // 初期化成功を確認
-      if (this.playbackControlsComponent && this.playbackControlsComponent.isInitialized) {
-        // 明示的に表示
-        if (typeof this.playbackControlsComponent.show === 'function') {
-          this.playbackControlsComponent.show();
-        }
-
-        this.logger.info('PlaybackControlsComponent initialized and shown successfully');
-
-        // 再生コントロール要素を取得して確実に表示
-        const playbackControlsEl = document.getElementById('playback-controls');
-        if (playbackControlsEl) {
-          playbackControlsEl.style.display = 'block';
-          playbackControlsEl.style.visibility = 'visible';
-          playbackControlsEl.style.opacity = '1';
-        }
-
-        return this.playbackControlsComponent;
-      } else {
-        this.logger.warn('PlaybackControlsComponent created but not properly initialized');
-        return null;
-      }
-    } catch (error) {
-      this.logger.error('Error initializing PlaybackControlsComponent:', error);
-      return null;
-    }
-  }
-
-  /**
-   * デバイスリストViewModelの初期化
-   * @private
-   */
-  _initializeDeviceListViewModel() {
-    if (this.deviceListViewModel) {
-      this.logger.debug('DeviceListViewModel already initialized, setting up events');
-      // 既存のViewModelでもイベントリスナーは設定する
-      this._setupDeviceListViewModelEvents();
-      return;
-    }
-
-    try {
-      // コンテナセレクタの設定
-      const containerSelector = '#device-inputs';
-      const noDevicesSelector = '#no-devices-message';
-
-      // ViewModelの作成（依存性注入によるインスタンス化）
-      // イベントエミッタを渡して初期化
-      this.deviceListViewModel = new DeviceListViewModel({
-        containerSelector,
-        noDevicesSelector
-      }, this.eventEmitter, this.logger);
-
-      // グローバルアクセスのためにwindowオブジェクトに保存（後方互換性のため）
-      if (typeof window !== 'undefined') {
-        window.deviceListViewModel = this.deviceListViewModel;
-      }
-
-      // 初期化
-      const initialized = this.deviceListViewModel.initialize();
-      if (initialized) {
-        this.logger.debug('DeviceListViewModel initialized successfully');
-      } else {
-        this.logger.warn('DeviceListViewModel initialized with warnings');
-      }
-
-      // イベントリスナーの設定
-      this._setupDeviceListViewModelEvents();
-    } catch (error) {
-      this.logger.error('Error initializing DeviceListViewModel:', error);
-    }
-  }
-
-  /**
-   * DeviceListViewModelの新規作成（フォールバック）
-   * 初期化に失敗した場合に呼び出される
-   * @private
-   */
-  _createDeviceListViewModel() {
-    try {
-      this.logger.debug('Attempting to create DeviceListViewModel as fallback');
-
-      // DeviceListViewModelクラスが利用可能かチェック
-      if (typeof DeviceListViewModel === 'undefined') {
-        // DeviceListViewModelをインポート
-        import('../viewmodels/DeviceListViewModel.js')
-          .then(module => {
-            const DeviceListViewModelClass = module.DeviceListViewModel;
-            // インスタンス作成
-            this._createDeviceListViewModelInstance(DeviceListViewModelClass);
-          })
-          .catch(error => {
-            this.logger.error('Failed to import DeviceListViewModel:', error);
-          });
-      } else {
-        // DeviceListViewModelが既に利用可能な場合
-        this._createDeviceListViewModelInstance(DeviceListViewModel);
-      }
-    } catch (error) {
-      this.logger.error('Failed to create DeviceListViewModel:', error);
-    }
-  }
-
-  /**
-   * DeviceListViewModelのインスタンスを作成
-   * @param {Class} DeviceListViewModelClass DeviceListViewModelクラス
-   * @private
-   */
-  _createDeviceListViewModelInstance(DeviceListViewModelClass) {
-    try {
-      // 基本オプション
-      const options = {
-        containerSelector: '#device-inputs',
-        noDevicesSelector: '#no-devices-message'
-      };
-
-      // インスタンス化
-      this.deviceListViewModel = new DeviceListViewModelClass(
-        options,
-        this.eventEmitter,
-        this.logger
-      );
-
-      // 初期化
-      const initialized = this.deviceListViewModel.initialize();
-      if (initialized) {
-        this.logger.debug('DeviceListViewModel created and initialized successfully as fallback');
-        // イベントリスナーの設定
-        this._setupDeviceListViewModelEvents();
-      } else {
-        this.logger.warn('DeviceListViewModel created but initialization returned false');
-      }
-    } catch (error) {
-      this.logger.error('Error creating DeviceListViewModel instance:', error);
-    }
-  }
-
-  /**
-   * DeviceListViewModel用のイベントリスナーを設定
-   * @private
-   */
-  _setupDeviceListViewModelEvents() {
-    if (!this.deviceListViewModel || !this.eventEmitter) return;
-
-    // デバイスの可視性変更イベント（新しいイベント型）
-    this.eventEmitter.on(EventTypes.DEVICE_VISIBILITY_CHANGED, async (data) => {
-      if (!data || !data.deviceId) return;
-
-      try {
-        // 現在のデバイス表示状態を取得
-        const deviceIndex = this.meterViewModel.getDeviceIndex(data.deviceId);
-        if (deviceIndex >= 0) {
-          // デバッグ：更新前の状態
-          this.logger.debug(`Visibility BEFORE: ${data.deviceId} (index ${deviceIndex}) -> ${this.meterViewModel.state.visible[deviceIndex]}`);
-
-          // MeterViewModel経由でデバイス表示状態を更新
-          this.meterViewModel.setVisible(deviceIndex, data.isVisible);
-
-          // デバッグ：更新後の状態
-          this.logger.debug(`Visibility AFTER: ${data.deviceId} (index ${deviceIndex}) -> ${this.meterViewModel.state.visible[deviceIndex]}`);
-
-          // デバイスサービスが実装されていれば、そちらにも通知
-          if (this.deviceService && typeof this.deviceService.setDeviceVisibility === 'function') {
-            await this.deviceService.setDeviceVisibility(data.deviceId, data.isVisible);
-          }
-
-          this.logger.debug(`Device visibility changed: ${data.deviceId} -> ${data.isVisible ? 'visible' : 'hidden'}`);
-
-          // プレビューの更新を強制
-          this.meterViewModel._notifyChange();
-
-          // DeviceListViewModelも更新（存在する場合）
-          this._updateDeviceListViewModel();
-        }
-      } catch (error) {
-        this.logger.error(`Error handling device visibility change for ${data.deviceId}:`, error);
-      }
-    });
-
-    // デバイス削除イベント（新しいイベント型）
-    this.eventEmitter.on(EventTypes.COMMAND_REMOVE_DEVICE, async (data) => {
-      if (!data || !data.deviceId) return;
-
-      try {
-        await this.removeDevice(data.deviceId);
-        this.logger.info(`Device deleted: ${data.deviceId}`);
-      } catch (error) {
-        this.logger.error(`Error deleting device ${data.deviceId}:`, error);
-      }
-    });
-
-    this.logger.debug('DeviceListViewModel events setup complete');
-  }
-
-  /**
-   * オーバーレイウィンドウを開く
+   * オーバーレイウィンドウを開く（UIComponentManagerに委譲）
    * @returns {boolean} 成功したかどうか
    */
   openOverlay() {
-    this.logger.info('Opening overlay window');
-
-    try {
-      // 現在のパスを取得してオーバーレイパラメータを追加
-      const overlayUrl = window.location.href.split('?')[0] + '?overlay=true';
-      const overlayWindow = window.open(overlayUrl, 'MeterOverlay', 'width=800,height=600');
-
-      if (!overlayWindow) {
-        this.logger.warn('Failed to open overlay window - popup might be blocked');
-        return false;
-      }
-
-      this.logger.info('Overlay window opened successfully');
-      return true;
-    } catch (error) {
-      this.logger.error('Error opening overlay window:', error);
-      return false;
-    }
+    return this.uiComponentManager.openOverlay();
   }
 
   /**
-   * オーバーレイモードを設定
+   * オーバーレイモードを設定（UIComponentManagerに委譲）
    * @param {boolean} isOverlay オーバーレイモードかどうか
    * @returns {boolean} 成功したかどうか
    */
   setOverlayMode(isOverlay = true) {
-    this.logger.info(`Setting overlay mode to: ${isOverlay}`);
-
-    try {
-      // オーバーレイモードの内部状態を更新
-      if (!this.options) {
-        this.options = {};
-      }
-      this.options.isOverlayMode = isOverlay;
-
-      // MeterViewModelにオーバーレイモードを設定
-      if (this.meterViewModel) {
-        // MeterViewModelにオーバーレイモード設定メソッドがあれば使用
-        if (typeof this.meterViewModel.setOverlayMode === 'function') {
-          this.meterViewModel.setOverlayMode(isOverlay);
-        }
-        // なければ状態を直接設定
-        else if (this.meterViewModel.state) {
-          this.meterViewModel.state.isOverlayMode = isOverlay;
-          // 状態変更を通知
-          if (typeof this.meterViewModel._notifyChange === 'function') {
-            this.meterViewModel._notifyChange();
-          }
-        }
-      }
-
-      // MeterRendererにオーバーレイモードを設定
-      if (this.meterRenderer && typeof this.meterRenderer.setOverlayMode === 'function') {
-        this.meterRenderer.setOverlayMode(isOverlay);
-      }
-
-      // DeviceListViewModelにもオーバーレイモードを設定（存在する場合）
-      if (this.deviceListViewModel && typeof this.deviceListViewModel.setOverlayMode === 'function') {
-        this.deviceListViewModel.setOverlayMode(isOverlay);
-      }
-
-      // イベント発行（オプショナル）
-      if (this.eventEmitter) {
-        this.eventEmitter.emit('overlayModeChanged', { isOverlay });
-      }
-
-      this.logger.info(`Overlay mode set to: ${isOverlay}`);
-      return true;
-    } catch (error) {
-      this.logger.error('Error setting overlay mode:', error);
-      return false;
-    }
+    return this.uiComponentManager.setOverlayMode(isOverlay);
   }
 
   /**
@@ -1610,21 +712,24 @@ export class AppController {
       this.stopMonitoring();
     }
 
-    // 記録停止
-    if (this.recordingEnabled && this.recordSessionUseCase) {
-      this.recordSessionUseCase.stopRecording().catch(error => {
+    // SessionManagerの状態を確認して停止
+    if (this.sessionManager.isRecording()) {
+      this.sessionManager.stopRecording().catch(error => {
         this.logger.error('Error stopping recording during cleanup:', error);
       });
     }
-
-    // 再生停止
-    if (this.replayingEnabled && this.replaySessionUseCase) {
-      this.replaySessionUseCase.stop();
+    if (this.sessionManager.isReplaying()) {
+      this.sessionManager.stopReplay();
     }
 
-    // WebSocket切断
-    if (this.webSocketClient) {
-      this.webSocketClient.disconnect();
+    // DeviceConnectionManagerの切断
+    if (this.deviceConnectionManager) {
+      this.deviceConnectionManager.disconnect();
+    }
+
+    // UIComponentManagerの解放
+    if (this.uiComponentManager) {
+      this.uiComponentManager.dispose();
     }
 
     // ViewModel解放
@@ -1637,29 +742,11 @@ export class AppController {
       this.meterRenderer.dispose();
     }
 
-    // デバイスリストViewModelの解放
-    if (this.deviceListViewModel) {
-      // deviceListViewModelにdisposeメソッドがある場合は呼び出し
-      if (typeof this.deviceListViewModel.dispose === 'function') {
-        this.deviceListViewModel.dispose();
-      }
-      this.deviceListViewModel = null;
-    }
-
-    // ログコンポーネントの解放
-    if (this.playbackControlsComponent && this.playbackControlsComponent.destroy) {
-      this.playbackControlsComponent.destroy();
-      this.playbackControlsComponent = null;
-    }
-
     // イベントリスナーの削除 - メモリリーク対策
     if (this.eventEmitter) {
-      // 新しいイベントリスナー削除メソッドを使用
       this.eventEmitter.removeListenersByOwner(this);
 
-      // バインドされたハンドラーが存在する場合は個別に削除（念のため）
       if (this.boundHandlers) {
-        // 新しいイベント名の解除
         this.eventEmitter.off(EventTypes.DEVICE_CONNECTED, this.boundHandlers.deviceConnected);
         this.eventEmitter.off(EventTypes.DEVICE_DISCONNECTED, this.boundHandlers.deviceDisconnected);
         this.eventEmitter.off(EventTypes.DEVICE_UPDATED, this.boundHandlers.deviceUpdated);
@@ -1674,7 +761,6 @@ export class AppController {
       window.removeEventListener('resize', this.boundHandlers.windowResize);
     }
 
-    // バインドされたハンドラーの参照を解放
     this.boundHandlers = null;
 
     this.logger.info('Application disposed successfully');

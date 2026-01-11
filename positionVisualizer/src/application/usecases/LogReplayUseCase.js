@@ -313,26 +313,10 @@ export class LogReplayUseCase {
       this.currentPosition = currentEntry.relativeTime / this.totalDuration;
     }
 
-    // イベント発行（デバイス値の更新）- 再生元であることを明示
-
-    // 後方互換性のための値の変換（一時的対処）
-    let valueToSend = currentEntry.value;
-
-    // 古い形式のログファイル（raw/normalized）の場合、新しい形式（rawValue/normalizedValue）に変換
-    if (valueToSend && valueToSend.raw !== undefined && valueToSend.rawValue === undefined) {
-      valueToSend = {
-        rawValue: valueToSend.raw,
-        normalizedValue: valueToSend.normalized !== undefined ? valueToSend.normalized : null,
-        timestamp: valueToSend.timestamp || Date.now(),
-        deviceId: currentEntry.deviceId
-      };
-    }
-
-    // 値をそのまま使用する（sourceプロパティは不要に）
     // デバイス値の更新イベントを再生用の特別なイベントとして発行
     this.eventBus.emit(EventTypes.DEVICE_VALUE_REPLAYED, {
       deviceId: currentEntry.deviceId,
-      value: valueToSend,
+      value: currentEntry.value,
       metadata: {
         timestamp: Date.now(),
         entryIndex: this.currentEntryIndex,

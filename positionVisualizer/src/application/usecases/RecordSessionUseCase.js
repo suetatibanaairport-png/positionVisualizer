@@ -103,15 +103,9 @@ export class RecordSessionUseCase {
     // ポーリング機能を開始（イベント監視の補完として）
     this.startPolling();
 
-    // イベント通知（新しいイベント命名規則）
+    // イベント通知
     this.logger.debug('RECORDING_STARTED イベントを発行します');
     this.eventBus.emit(EventTypes.RECORDING_STARTED, {
-      sessionId,
-      startTime: this.startTime
-    });
-
-    // 後方互換性のために旧イベント名でも発行
-    this.eventBus.emit('recordingStarted', {
       sessionId,
       startTime: this.startTime
     });
@@ -184,15 +178,8 @@ export class RecordSessionUseCase {
       }
     }
 
-    // イベント通知（新しいイベント命名規則）
+    // イベント通知
     this.eventBus.emit(EventTypes.RECORDING_STOPPED, {
-      sessionId,
-      duration,
-      entriesCount: entries.length
-    });
-
-    // 後方互換性のために旧イベント名でも発行
-    this.eventBus.emit('recordingStopped', {
       sessionId,
       duration,
       entriesCount: entries.length
@@ -262,16 +249,8 @@ export class RecordSessionUseCase {
     }
 
     // イベント通知
-    // 'entryRecorded'に対応する新しいイベント名がEventTypesにないためカスタムで定義
     const ENTRY_RECORDED_EVENT = 'event:recording:entry:recorded';
     this.eventBus.emit(ENTRY_RECORDED_EVENT, {
-      entry,
-      sessionId: this.currentSessionId,
-      entriesCount: this.entries.length
-    });
-
-    // 後方互換性のために旧イベント名でも発行
-    this.eventBus.emit('entryRecorded', {
       entry,
       sessionId: this.currentSessionId,
       entriesCount: this.entries.length
@@ -379,16 +358,9 @@ export class RecordSessionUseCase {
 
         this.logger.info(`Recording downloaded as ${saveFilename} (${dataToSave.length} entries)`);
 
-        // イベント通知（新しいイベント命名規則）
-        // 'recordingSaved'に対応する新しいイベント名がEventTypesにないためカスタムで定義
+        // イベント通知
         const RECORDING_SAVED_EVENT = 'event:recording:saved';
         this.eventBus.emit(RECORDING_SAVED_EVENT, {
-          filename: saveFilename,
-          entriesCount: dataToSave.length
-        });
-
-        // 後方互換性のために旧イベント名でも発行
-        this.eventBus.emit('recordingSaved', {
           filename: saveFilename,
           entriesCount: dataToSave.length
         });
@@ -402,16 +374,9 @@ export class RecordSessionUseCase {
       if (result) {
         this.logger.info(`Recording saved to ${saveFilename} (${dataToSave.length} entries)`);
 
-        // イベント通知（新しいイベント命名規則）
-        // 'recordingSaved'に対応する新しいイベント名がEventTypesにないためカスタムで定義
+        // イベント通知
         const RECORDING_SAVED_EVENT = 'event:recording:saved';
         this.eventBus.emit(RECORDING_SAVED_EVENT, {
-          filename: saveFilename,
-          entriesCount: dataToSave.length
-        });
-
-        // 後方互換性のために旧イベント名でも発行
-        this.eventBus.emit('recordingSaved', {
           filename: saveFilename,
           entriesCount: dataToSave.length
         });
@@ -483,13 +448,9 @@ export class RecordSessionUseCase {
       }
     };
 
-    // 新しいイベント命名規則でリスナーを登録
+    // イベントリスナーを登録
     this.eventBus.on(EventTypes.DEVICE_UPDATED, this.boundHandleDeviceUpdated);
     this.logger.debug('DEVICE_UPDATED イベントのリスナーを登録しました');
-
-    // 後方互換性のために旧イベント名でも登録
-    this.eventBus.on('deviceUpdated', this.boundHandleDeviceUpdated);
-    this.logger.debug('deviceUpdated イベントのリスナーを登録しました');
 
     // デバイスの変更をリアルタイムに監視する
     this.boundHandleDeviceValueUpdated = (event) => {
@@ -502,15 +463,11 @@ export class RecordSessionUseCase {
       }
     };
 
-    // 新しいイベント命名規則でリスナーを登録
+    // イベントリスナーを登録
     // 注意: ここでは意図的にDEVICE_VALUE_REPLAYEDのイベントは監視しない
     // 記録は実際のデバイスからのイベント(DEVICE_VALUE_UPDATED)のみを対象とする
     this.eventBus.on(EventTypes.DEVICE_VALUE_UPDATED, this.boundHandleDeviceValueUpdated);
     this.logger.debug('DEVICE_VALUE_UPDATED イベントのリスナーを登録しました');
-
-    // 後方互換性のために旧イベント名でも登録
-    this.eventBus.on('deviceValueUpdated', this.boundHandleDeviceValueUpdated);
-    this.logger.debug('deviceValueUpdated イベントのリスナーを登録しました');
 
     this.logger.info('デバイス値変更の購読を開始しました');
   }
@@ -531,36 +488,16 @@ export class RecordSessionUseCase {
 
     // deviceUpdatedイベントリスナーを解除
     if (this.boundHandleDeviceUpdated) {
-      // 新しいイベント命名規則のリスナーを解除
       this.eventBus.off(EventTypes.DEVICE_UPDATED, this.boundHandleDeviceUpdated);
       this.logger.debug('DEVICE_UPDATED イベントのリスナーを解除しました');
-
-      // 古いイベント名のリスナーも解除
-      this.eventBus.off('deviceUpdated', this.boundHandleDeviceUpdated);
-      this.logger.debug('deviceUpdated イベントのリスナーを解除しました');
-
       this.boundHandleDeviceUpdated = null;
-    } else {
-      // 後方互換性のため
-      this.eventBus.off('deviceUpdated');
-      this.eventBus.off(EventTypes.DEVICE_UPDATED);
     }
 
     // deviceValueUpdatedイベントリスナーを解除
     if (this.boundHandleDeviceValueUpdated) {
-      // 新しいイベント命名規則のリスナーを解除
       this.eventBus.off(EventTypes.DEVICE_VALUE_UPDATED, this.boundHandleDeviceValueUpdated);
       this.logger.debug('DEVICE_VALUE_UPDATED イベントのリスナーを解除しました');
-
-      // 古いイベント名のリスナーも解除
-      this.eventBus.off('deviceValueUpdated', this.boundHandleDeviceValueUpdated);
-      this.logger.debug('deviceValueUpdated イベントのリスナーを解除しました');
-
       this.boundHandleDeviceValueUpdated = null;
-    } else {
-      // 後方互換性のため
-      this.eventBus.off('deviceValueUpdated');
-      this.eventBus.off(EventTypes.DEVICE_VALUE_UPDATED);
     }
 
     // 既存の購読も解除

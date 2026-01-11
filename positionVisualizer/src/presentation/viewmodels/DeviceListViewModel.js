@@ -512,12 +512,7 @@ export class DeviceListViewModel {
    * @private
    */
   _handleVisibilityChange(deviceId, isVisible) {
-    this.logger.debug(`[DEBUG TOGGLE] Toggle device visibility: ${deviceId} -> ${isVisible ? 'visible' : 'hidden'}`);
-
-    // deviceIdの型をチェック
-    this.logger.debug(`[DEBUG TOGGLE] deviceId type: ${typeof deviceId}, value: ${deviceId}`);
-    // isVisibleの型をチェック
-    this.logger.debug(`[DEBUG TOGGLE] isVisible type: ${typeof isVisible}, value: ${isVisible}`);
+    this.logger.debug(`Toggle device visibility: ${deviceId} -> ${isVisible ? 'visible' : 'hidden'}`);
 
     try {
       // トグル要素のUIを即時更新
@@ -525,21 +520,14 @@ export class DeviceListViewModel {
       if (deviceGroup) {
         const toggleInput = deviceGroup.querySelector('.toggle-switch input');
         if (toggleInput) {
-          this.logger.debug(`[DEBUG TOGGLE] Updating toggle input checked to: ${isVisible}`);
           toggleInput.checked = isVisible;
-        } else {
-          this.logger.warn(`[DEBUG TOGGLE] Toggle input element not found for device ${deviceId}`);
         }
-      } else {
-        this.logger.warn(`[DEBUG TOGGLE] Device group element not found for device ${deviceId}`);
       }
 
       // インターフェースを介してイベントを発火（新しい命名規則を使用）
-      this.logger.debug(`[DEBUG TOGGLE] Emitting DEVICE_VISIBILITY_CHANGED event with deviceId: ${deviceId}, isVisible: ${isVisible}`);
       this._emitEvent(EventTypes.DEVICE_VISIBILITY_CHANGED, { deviceId, isVisible });
-      this.logger.debug(`[DEBUG TOGGLE] Visibility change events emitted for device ${deviceId}: ${isVisible ? 'visible' : 'hidden'}`);
     } catch (error) {
-      this.logger.error(`[DEBUG TOGGLE] Error in visibility toggle handler for device ${deviceId}:`, error);
+      this.logger.error(`Error in visibility toggle handler for device ${deviceId}:`, error);
     }
   }
 
