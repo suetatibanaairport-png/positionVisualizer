@@ -4,8 +4,8 @@
  * セッションデータの再生と制御を担当
  */
 
-import { AppLogger } from '../../infrastructure/services/Logger.js';
-import { EventBus } from '../../infrastructure/services/EventBus.js';
+// 注: IEventBus, ILogger はドメイン層のインターフェース
+// 実装はAppBootstrapで注入される
 
 /**
  * セッション再生のユースケースクラス
@@ -15,11 +15,15 @@ export class ReplaySessionUseCase {
    * セッション再生ユースケースのコンストラクタ
    * @param {Object} sessionRepository セッションリポジトリ
    * @param {Object} valueRepository 値リポジトリ
+   * @param {Object} eventBus イベントバス（IEventBus実装）
+   * @param {Object} logger ロガー（ILogger実装）
    * @param {Object} options オプション設定
    */
-  constructor(sessionRepository, valueRepository, options = {}) {
+  constructor(sessionRepository, valueRepository, eventBus, logger, options = {}) {
     this.sessionRepository = sessionRepository;
     this.valueRepository = valueRepository;
+    this.eventBus = eventBus;
+    this.logger = logger || { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} };
     this.options = {
       autoRewind: true,              // 再生完了後に自動的に巻き戻すか
       replaySpeedMultiplier: 1.0,    // 再生速度倍率（1.0 = 等速）
@@ -36,9 +40,6 @@ export class ReplaySessionUseCase {
     this.startTime = null;
     this.playbackTimer = null;
     this.nextEntryTimeout = null;
-
-    // ロガー
-    this.logger = AppLogger.createLogger('ReplaySessionUseCase');
   }
 
   /**
@@ -95,7 +96,7 @@ export class ReplaySessionUseCase {
       this.logger.info(`Loaded session with ${sortedEntries.length} entries`);
 
       // イベント通知
-      EventBus.emit('sessionLoaded', {
+      this.eventBus.emit('sessionLoaded', {
         sessionId,
         entryCount: sortedEntries.length,
         duration: this.getSessionDuration()
@@ -143,7 +144,7 @@ export class ReplaySessionUseCase {
       this._scheduleNextEntry();
 
       // イベント通知
-      EventBus.emit('playbackResumed', {
+      this.eventBus.emit('playbackResumed', {
         sessionId: this.currentSessionId,
         currentIndex: this.currentIndex,
         progress: this._calculateProgress()
@@ -168,7 +169,7 @@ export class ReplaySessionUseCase {
     this._scheduleNextEntry();
 
     // イベント通知
-    EventBus.emit('playbackStarted', {
+    this.eventBus.emit('playbackStarted', {
       sessionId: this.currentSessionId,
       entryCount: this.sessionData.entries.length
     });
@@ -196,7 +197,7 @@ export class ReplaySessionUseCase {
     this.logger.info(`Paused playback at index ${this.currentIndex}`);
 
     // イベント通知
-    EventBus.emit('playbackPaused', {
+    this.eventBus.emit('playbackPaused', {
       sessionId: this.currentSessionId,
       currentIndex: this.currentIndex,
       progress: this._calculateProgress()
@@ -257,7 +258,7 @@ export class ReplaySessionUseCase {
       this.logger.info('Stopped playback');
 
       // イベント通知
-      EventBus.emit('playbackStopped', {
+      this.eventBus.emit('playbackStopped', {
         sessionId: this.currentSessionId,
         currentIndex: this.currentIndex,
         progress: this._calculateProgress()
@@ -290,7 +291,7 @@ export class ReplaySessionUseCase {
     this.logger.info('Rewound playback to beginning');
 
     // イベント通知
-    EventBus.emit('playbackRewound', {
+    this.eventBus.emit('playbackRewound', {
       sessionId: this.currentSessionId
     });
 
@@ -391,7 +392,7 @@ export class ReplaySessionUseCase {
     this.logger.info(`Seeked to position ${position.toFixed(2)} (index: ${newIndex})`);
 
     // イベント通知
-    EventBus.emit('playbackSeeked', {
+    this.eventBus.emit('playbackSeeked', {
       sessionId: this.currentSessionId,
       currentIndex: this.currentIndex,
       position,
@@ -439,7 +440,7 @@ export class ReplaySessionUseCase {
     this.logger.info(`Playback speed changed from ${oldSpeed}x to ${speed}x`);
 
     // イベント通知
-    EventBus.emit('playbackSpeedChanged', {
+    this.eventBus.emit('playbackSpeedChanged', {
       sessionId: this.currentSessionId,
       oldSpeed,
       newSpeed: speed
@@ -460,7 +461,7 @@ export class ReplaySessionUseCase {
     this.logger.info(`Live mode ${enabled ? 'enabled' : 'disabled'}`);
 
     // イベント通知
-    EventBus.emit('liveModeChanged', {
+    this.eventBus.emit('liveModeChanged', {
       sessionId: this.currentSessionId,
       enabled: this.options.liveMode
     });
@@ -588,7 +589,7 @@ export class ReplaySessionUseCase {
       this._sendValueToDevice(entry.deviceId, entry.value, timestamp);
 
       // deviceValueUpdatedイベントも発行してUIを強制的に更新（値の変更を反映させるため）
-      EventBus.emit('deviceValueUpdated', {
+      this.eventBus.emit('deviceValueUpdated', {
         deviceId: entry.deviceId,
         value: this._normalizeValue(entry.value)
       });
@@ -601,7 +602,7 @@ export class ReplaySessionUseCase {
         progress: this._calculateProgress(),
         timestamp
       };
-      EventBus.emit('entryPlayed', entryInfo);
+      this.eventBus.emit('entryPlayed', entryInfo);
 
       // デバッグ表示用: 再生中の値を小さく表示
       this._showDebugValues(entry.deviceId, this._normalizeValue(entry.value), this.currentIndex);
@@ -611,7 +612,7 @@ export class ReplaySessionUseCase {
         const progress = this._calculateProgress();
         this.logger.debug(`Replay progress: ${(progress * 100).toFixed(1)}%, entry ${this.currentIndex}/${this.sessionData.entries.length}`);
 
-        EventBus.emit('playbackProgress', {
+        this.eventBus.emit('playbackProgress', {
           sessionId: this.currentSessionId,
           currentIndex: this.currentIndex,
           totalEntries: this.sessionData.entries.length,
@@ -1028,14 +1029,14 @@ export class ReplaySessionUseCase {
     this._stopStatsUpdateInterval();
 
     // イベント通知
-    EventBus.emit('playbackCompleted', {
+    this.eventBus.emit('playbackCompleted', {
       sessionId: this.currentSessionId,
       entryCount: this.sessionData.entries.length,
       autoStopped: true
     });
 
     // UIに再生が完全に終了したことを通知
-    EventBus.emit('playbackFullyStopped', {
+    this.eventBus.emit('playbackFullyStopped', {
       sessionId: this.currentSessionId
     });
 

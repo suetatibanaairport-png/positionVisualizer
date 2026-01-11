@@ -142,10 +142,19 @@ class AppBootstrap {
   _initializeApplicationLayer(infraComponents) {
     this.logger.debug('Initializing application layer');
 
-    // サービス
+    // 各サービス/ユースケース用のロガーを作成
+    const deviceServiceLogger = new LoggerAdapter('DeviceService');
+    const monitorUseCaseLogger = new LoggerAdapter('MonitorValuesUseCase');
+    const recordSessionLogger = new LoggerAdapter('RecordSessionUseCase');
+    const replaySessionLogger = new LoggerAdapter('LogReplayUseCase');
+    const logServiceLogger = new LoggerAdapter('LogService');
+
+    // サービス（依存性注入）
     const deviceService = new DeviceService(
       infraComponents.deviceRepository,
       infraComponents.valueRepository,
+      infraComponents.eventBus,
+      deviceServiceLogger,
       {
         maxDevices: this.options.maxDevices,
         deviceTimeoutMs: 0, // 0を設定してタイムアウト機能を完全に無効化
@@ -153,10 +162,12 @@ class AppBootstrap {
       }
     );
 
-    // ユースケース
+    // ユースケース（依存性注入）
     const monitorUseCase = new MonitorValuesUseCase(
       infraComponents.deviceRepository,
       infraComponents.valueRepository,
+      infraComponents.eventBus,
+      monitorUseCaseLogger,
       {
         monitoringInterval: this.options.monitorInterval
       }
@@ -164,21 +175,27 @@ class AppBootstrap {
 
     const recordSessionUseCase = new RecordSessionUseCase(
       infraComponents.logSessionRepository,
-      infraComponents.valueRepository
+      infraComponents.valueRepository,
+      infraComponents.eventBus,
+      recordSessionLogger
     );
 
     const replaySessionUseCase = new LogReplayUseCase(
       infraComponents.logSessionRepository,
+      infraComponents.eventBus,
+      replaySessionLogger,
       {
         autoRewind: true,
         replaySpeedMultiplier: 1.0
       }
     );
 
-    // ログサービス
+    // ログサービス（依存性注入）
     const logService = new LogService(
       infraComponents.logSessionRepository,
-      infraComponents.deviceRepository
+      infraComponents.deviceRepository,
+      infraComponents.eventBus,
+      logServiceLogger
     );
 
     return {

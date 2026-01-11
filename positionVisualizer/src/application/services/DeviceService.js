@@ -14,8 +14,8 @@ import {
   DeviceErrorEvent,
   DevicesResetEvent
 } from '../../domain/events/DeviceEvents.js';
-import { EventBus } from '../../infrastructure/services/EventBus.js';
-import { AppLogger } from '../../infrastructure/services/Logger.js';
+// 注: IEventBus, ILogger はドメイン層のインターフェース
+// 実装はAppBootstrapで注入される
 
 /**
  * デバイス管理サービスクラス
@@ -25,11 +25,15 @@ export class DeviceService {
    * デバイスサービスのコンストラクタ
    * @param {Object} deviceRepository デバイスリポジトリ
    * @param {Object} valueRepository 値リポジトリ
+   * @param {Object} eventBus イベントバス（IEventBus実装）
+   * @param {Object} logger ロガー（ILogger実装）
    * @param {Object} options オプション設定
    */
-  constructor(deviceRepository, valueRepository, options = {}) {
+  constructor(deviceRepository, valueRepository, eventBus, logger, options = {}) {
     this.deviceRepository = deviceRepository;
     this.valueRepository = valueRepository;
+    this.eventBus = eventBus;
+    this.logger = logger || { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} };
     this.options = {
       maxDevices: 6,                 // 最大デバイス数
       deviceTimeoutMs: 10000,        // デバイスタイムアウト（ミリ秒）
@@ -39,9 +43,6 @@ export class DeviceService {
 
     // 定期的なチェックのタイマー
     this.timeoutCheckTimer = null;
-
-    // ロガー
-    this.logger = AppLogger.createLogger('DeviceService');
 
     // タイムアウトチェック開始
     if (this.options.deviceTimeoutMs > 0) {
@@ -75,7 +76,7 @@ export class DeviceService {
       device = new Device(deviceId, name);
 
       // イベント発火
-      EventBus.emit('deviceDiscovered', new DeviceDiscoveredEvent(deviceId, deviceInfo));
+      this.eventBus.emit('deviceDiscovered', new DeviceDiscoveredEvent(deviceId, deviceInfo));
 
       this.logger.info(`New device created: ${deviceId} (${name})`);
     }
@@ -85,7 +86,7 @@ export class DeviceService {
       device.connect();
 
       // イベント発火
-      EventBus.emit('deviceConnected', new DeviceConnectedEvent(deviceId, {
+      this.eventBus.emit('deviceConnected', new DeviceConnectedEvent(deviceId, {
         timestamp: Date.now(),
         isNew
       }));
@@ -126,7 +127,7 @@ export class DeviceService {
     device.connect();
 
     // イベント発火
-    EventBus.emit('deviceConnected', new DeviceConnectedEvent(deviceId, {
+    this.eventBus.emit('deviceConnected', new DeviceConnectedEvent(deviceId, {
       timestamp: Date.now(),
       isReconnect: true
     }));
@@ -161,7 +162,7 @@ export class DeviceService {
     device.disconnect();
 
     // イベント発火
-    EventBus.emit('deviceDisconnected', new DeviceDisconnectedEvent(deviceId, reason));
+    this.eventBus.emit('deviceDisconnected', new DeviceDisconnectedEvent(deviceId, reason));
 
     // 保存
     await this.deviceRepository.save(device);
@@ -193,7 +194,7 @@ export class DeviceService {
     device.setName(name);
 
     // イベント発火
-    EventBus.emit('deviceUpdated', new DeviceUpdatedEvent(deviceId, {
+    this.eventBus.emit('deviceUpdated', new DeviceUpdatedEvent(deviceId, {
       name: {
         old: oldName,
         new: name
@@ -225,7 +226,7 @@ export class DeviceService {
     device.setIcon(iconUrl);
 
     // イベント発火
-    EventBus.emit('deviceUpdated', new DeviceUpdatedEvent(deviceId, {
+    this.eventBus.emit('deviceUpdated', new DeviceUpdatedEvent(deviceId, {
       iconUrl: {
         old: oldIconUrl,
         new: iconUrl
@@ -314,20 +315,12 @@ export class DeviceService {
     device.updateMetadata({ visible: isVisible });
 
     // イベント発火（deviceUpdated イベント）
-    EventBus.emit('deviceUpdated', new DeviceUpdatedEvent(deviceId, {
+    this.eventBus.emit('deviceUpdated', new DeviceUpdatedEvent(deviceId, {
       visible: {
         old: previousVisibility,
         new: isVisible
       }
     }));
-
-    // 新しいイベント型でも発火
-    // 重要: この部分が無限ループを引き起こす可能性がある
-    // イベントはUI操作から直接発行されるべきであり、ここでは発行しない
-    // EventBus.emit('deviceVisibilityChange', {
-    //   deviceId,
-    //   isVisible
-    // });
 
     // 保存
     await this.deviceRepository.save(device);
@@ -375,7 +368,7 @@ export class DeviceService {
     await this.valueRepository.clearAllHistory();
 
     // イベント発火
-    EventBus.emit('devicesReset', new DevicesResetEvent());
+    this.eventBus.emit('devicesReset', new DevicesResetEvent());
 
     this.logger.info('All devices have been reset');
     return true;
@@ -460,7 +453,7 @@ export class DeviceService {
           'timeout',
           `Device timed out after ${this.options.deviceTimeoutMs}ms`
         );
-        EventBus.emit('deviceError', errorEvent);
+        this.eventBus.emit('deviceError', errorEvent);
       }
     }
   }

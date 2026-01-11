@@ -3,9 +3,9 @@
  * ログ再生に関するユースケース
  */
 
-import { AppLogger } from '../../infrastructure/services/Logger.js';
-import { EventBus } from '../../infrastructure/services/EventBus.js';
 import { EventTypes } from '../../domain/events/EventTypes.js';
+// 注: IEventBus, ILogger はドメイン層のインターフェース
+// 実装はAppBootstrapで注入される
 
 /**
  * ログ再生ユースケースクラス
@@ -14,10 +14,15 @@ export class LogReplayUseCase {
   /**
    * LogReplayUseCaseコンストラクタ
    * @param {Object} logSessionRepository ログセッションリポジトリ
+   * @param {Object} eventBus イベントバス（IEventBus実装）
+   * @param {Object} logger ロガー（ILogger実装）
+   * @param {Object} options オプション設定
    */
-  constructor(logSessionRepository) {
+  constructor(logSessionRepository, eventBus, logger, options = {}) {
     this.logSessionRepository = logSessionRepository;
-    this.logger = AppLogger.createLogger('LogReplayUseCase');
+    this.eventBus = eventBus;
+    this.logger = logger || { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} };
+    this.options = options;
 
     // 再生の状態
     this.currentSessionId = null;
@@ -97,14 +102,14 @@ export class LogReplayUseCase {
 
     // 再生モードをセット
     this.isPlaybackMode = true;
-    EventBus.emit('playbackModeChanged', { isPlaybackMode: true });
+    this.eventBus.emit('playbackModeChanged', { isPlaybackMode: true });
     this.logger.debug('再生モード ON に設定しました');
 
     // 再生タイマーを設定
     this._startPlaybackTimer();
 
     // イベント通知
-    EventBus.emit('playbackStarted', { sessionId: this.currentSessionId });
+    this.eventBus.emit('playbackStarted', { sessionId: this.currentSessionId });
 
     return true;
   }
@@ -127,7 +132,7 @@ export class LogReplayUseCase {
     }
 
     this.logger.debug('Paused playback');
-    EventBus.emit('playbackPaused', {});
+    this.eventBus.emit('playbackPaused', {});
     return true;
   }
 
@@ -150,12 +155,12 @@ export class LogReplayUseCase {
 
     // 再生モードを解除
     this.isPlaybackMode = false;
-    EventBus.emit('playbackModeChanged', { isPlaybackMode: false });
+    this.eventBus.emit('playbackModeChanged', { isPlaybackMode: false });
     this.logger.debug('再生モード OFF に設定しました');
 
     this.logger.info('Stopped playback');
-    EventBus.emit('playbackStopped', {});
-    EventBus.emit('playbackFullyStopped', {});
+    this.eventBus.emit('playbackStopped', {});
+    this.eventBus.emit('playbackFullyStopped', {});
     return true;
   }
 
@@ -166,7 +171,7 @@ export class LogReplayUseCase {
     this.currentEntryIndex = 0;
     this.currentPosition = 0;
     this.logger.debug('Rewound playback');
-    EventBus.emit('playbackRewound', {});
+    this.eventBus.emit('playbackRewound', {});
     return true;
   }
 
@@ -209,7 +214,7 @@ export class LogReplayUseCase {
 
     this.currentEntryIndex = index;
     this.logger.debug(`Seeked to position ${position.toFixed(2)} (index ${index})`);
-    EventBus.emit('playbackSeeked', { position, entryIndex: index });
+    this.eventBus.emit('playbackSeeked', { position, entryIndex: index });
     return true;
   }
 
@@ -290,12 +295,12 @@ export class LogReplayUseCase {
 
         // 再生モードを解除
         this.isPlaybackMode = false;
-        EventBus.emit('playbackModeChanged', { isPlaybackMode: false });
+        this.eventBus.emit('playbackModeChanged', { isPlaybackMode: false });
         this.logger.debug('再生終了により再生モードを OFF に設定しました');
 
         this.logger.info('Playback completed');
-        EventBus.emit('playbackCompleted', {});
-        EventBus.emit('playbackFullyStopped', {});
+        this.eventBus.emit('playbackCompleted', {});
+        this.eventBus.emit('playbackFullyStopped', {});
       }
       return;
     }
@@ -325,7 +330,7 @@ export class LogReplayUseCase {
 
     // 値をそのまま使用する（sourceプロパティは不要に）
     // デバイス値の更新イベントを再生用の特別なイベントとして発行
-    EventBus.emit(EventTypes.DEVICE_VALUE_REPLAYED, {
+    this.eventBus.emit(EventTypes.DEVICE_VALUE_REPLAYED, {
       deviceId: currentEntry.deviceId,
       value: valueToSend,
       metadata: {

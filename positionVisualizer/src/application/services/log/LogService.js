@@ -5,8 +5,8 @@
 
 import { LogSession } from '../../../domain/entities/log/LogSession.js';
 import { LogEntry } from '../../../domain/entities/log/LogEntry.js';
-import { AppLogger } from '../../../infrastructure/services/Logger.js';
-import { EventBus } from '../../../infrastructure/services/EventBus.js';
+// 注: IEventBus, ILogger はドメイン層のインターフェース
+// 実装はAppBootstrapで注入される
 
 /**
  * ログサービスクラス
@@ -16,11 +16,14 @@ export class LogService {
    * LogServiceコンストラクタ
    * @param {Object} logSessionRepository ログセッションリポジトリ
    * @param {Object} deviceRepository デバイスリポジトリ
+   * @param {Object} eventBus イベントバス（IEventBus実装）
+   * @param {Object} logger ロガー（ILogger実装）
    */
-  constructor(logSessionRepository, deviceRepository) {
+  constructor(logSessionRepository, deviceRepository, eventBus, logger) {
     this.logSessionRepository = logSessionRepository;
     this.deviceRepository = deviceRepository;
-    this.logger = AppLogger.createLogger('LogService');
+    this.eventBus = eventBus;
+    this.logger = logger || { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} };
     this.currentSessionId = null;
   }
 

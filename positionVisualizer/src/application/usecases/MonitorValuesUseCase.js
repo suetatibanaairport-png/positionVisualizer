@@ -5,8 +5,8 @@
  */
 
 import { DeviceValueUpdatedEvent } from '../../domain/events/DeviceEvents.js';
-import { AppLogger } from '../../infrastructure/services/Logger.js';
-import { EventBus } from '../../infrastructure/services/EventBus.js';
+// 注: IEventBus, ILogger はドメイン層のインターフェース
+// 実装はAppBootstrapで注入される
 
 /**
  * デバイス値モニタリングのユースケースクラス
@@ -16,11 +16,15 @@ export class MonitorValuesUseCase {
    * モニタリングユースケースのコンストラクタ
    * @param {Object} deviceRepository デバイスリポジトリ
    * @param {Object} valueRepository 値リポジトリ
+   * @param {Object} eventBus イベントバス（IEventBus実装）
+   * @param {Object} logger ロガー（ILogger実装）
    * @param {Object} options オプション設定
    */
-  constructor(deviceRepository, valueRepository, options = {}) {
+  constructor(deviceRepository, valueRepository, eventBus, logger, options = {}) {
     this.deviceRepository = deviceRepository;
     this.valueRepository = valueRepository;
+    this.eventBus = eventBus;
+    this.logger = logger || { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} };
     this.options = {
       monitoringInterval: 100,       // モニタリング間隔（ミリ秒）
       useWebSocketUpdates: true,     // WebSocketからの更新を使用するか
@@ -36,9 +40,6 @@ export class MonitorValuesUseCase {
     this.monitoringTimer = null;
     this.deviceUpdateTimes = new Map(); // 最終更新時間を追跡
     this.devicePollingIntervals = new Map(); // デバイスごとのポーリング間隔
-
-    // ロガー
-    this.logger = AppLogger.createLogger('MonitorValuesUseCase');
   }
 
   /**
@@ -77,7 +78,7 @@ export class MonitorValuesUseCase {
         // 値の変更が閾値を超える場合にイベント発行
         if (previousValue && this._shouldNotifyValueChange(previousValue, currentValue)) {
           const event = new DeviceValueUpdatedEvent(deviceId, currentValue, previousValue);
-          EventBus.emit('deviceValueUpdated', event);
+          this.eventBus.emit('deviceValueUpdated', event);
         }
 
         // ポーリング間隔の調整（適応的ポーリングが有効な場合）
@@ -145,7 +146,7 @@ export class MonitorValuesUseCase {
     }, monitoringInterval);
 
     // 開始イベントを発行
-    EventBus.emit('monitoringStarted', { interval: monitoringInterval });
+    this.eventBus.emit('monitoringStarted', { interval: monitoringInterval });
 
     return true;
   }
@@ -171,7 +172,7 @@ export class MonitorValuesUseCase {
     this.logger.info('Monitoring stopped');
 
     // 停止イベントを発行
-    EventBus.emit('monitoringStopped', {});
+    this.eventBus.emit('monitoringStopped', {});
 
     return true;
   }
