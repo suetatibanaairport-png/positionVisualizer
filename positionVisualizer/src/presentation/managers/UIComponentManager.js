@@ -256,6 +256,34 @@ export class UIComponentManager {
       }
     });
 
+    // アイコン変更イベント
+    this.eventEmitter.on(EventTypes.DEVICE_ICON_CHANGED, async (data) => {
+      if (!data || !data.deviceId) return;
+
+      try {
+        if (this.appController && this.appController.deviceSettingsManager) {
+          await this.appController.deviceSettingsManager.setDeviceIcon(data.deviceId, data.iconUrl);
+        }
+        this.logger.debug(`Device icon changed: ${data.deviceId}`);
+      } catch (error) {
+        this.logger.error(`Error handling device icon change for ${data.deviceId}:`, error);
+      }
+    });
+
+    // 名前変更イベント
+    this.eventEmitter.on(EventTypes.DEVICE_NAME_CHANGED, async (data) => {
+      if (!data || !data.deviceId) return;
+
+      try {
+        if (this.appController && this.appController.deviceSettingsManager) {
+          await this.appController.deviceSettingsManager.setDeviceName(data.deviceId, data.name);
+        }
+        this.logger.debug(`Device name changed: ${data.deviceId} -> ${data.name}`);
+      } catch (error) {
+        this.logger.error(`Error handling device name change for ${data.deviceId}:`, error);
+      }
+    });
+
     this.logger.debug('DeviceListViewModel events setup complete');
   }
 

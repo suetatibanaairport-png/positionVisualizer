@@ -188,12 +188,18 @@ export class AppController {
       }
 
       // 3. デバイスリストViewModelの初期化（UIComponentManagerに委譲）
-      const deviceListVM = this.uiComponentManager.initializeDeviceListViewModel();
-      if (!deviceListVM) {
-        this.logger.warn('DeviceListViewModel initialization failed');
+      // オーバーレイモードではデバイス設定UIがないため初期化をスキップ
+      let deviceListVM = null;
+      if (!this.options.isOverlayMode) {
+        deviceListVM = this.uiComponentManager.initializeDeviceListViewModel();
+        if (!deviceListVM) {
+          this.logger.warn('DeviceListViewModel initialization failed');
+        } else {
+          // 初期デバイスリストを設定
+          this._updateDeviceListViewModel();
+        }
       } else {
-        // 初期デバイスリストを設定
-        this._updateDeviceListViewModel();
+        this.logger.debug('Skipping DeviceListViewModel initialization in overlay mode');
       }
 
       // 4. デバイス値のモニタリング開始

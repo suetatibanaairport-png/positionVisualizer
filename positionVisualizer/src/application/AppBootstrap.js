@@ -13,6 +13,7 @@ import { DeviceRepository } from '../infrastructure/repositories/DeviceRepositor
 import { ValueRepository } from '../infrastructure/repositories/ValueRepository.js';
 import { SettingsRepository } from '../infrastructure/repositories/SettingsRepository.js';
 import { LogSessionRepository } from '../infrastructure/repositories/LogSessionRepository.js';
+import { OverlaySyncService } from '../infrastructure/services/OverlaySyncService.js';
 
 // アプリケーション層
 import { DeviceService } from './services/DeviceService.js';
@@ -121,6 +122,15 @@ class AppBootstrap {
     const eventBusAdapter = new EventBusAdapter();
     const loggerAdapter = new LoggerAdapter('System');
 
+    // オーバーレイ同期サービス（BroadcastChannelでウィンドウ間同期）
+    const overlaySyncLogger = new LoggerAdapter('OverlaySyncService');
+    const isOverlay = this.options.isOverlay || false;
+    const overlaySyncService = new OverlaySyncService(
+      eventBusAdapter,
+      overlaySyncLogger,
+      isOverlay
+    );
+
     return {
       storageAdapter,
       webSocketClient,
@@ -129,7 +139,8 @@ class AppBootstrap {
       settingsRepository,
       logSessionRepository,
       eventBus: eventBusAdapter,
-      logger: loggerAdapter
+      logger: loggerAdapter,
+      overlaySyncService
     };
   }
 
