@@ -68,6 +68,14 @@ export class Device {
   }
 
   /**
+   * 可視性を取得
+   * @returns {boolean} デバイスが可視かどうか（デフォルトはtrue）
+   */
+  get visible() {
+    return this.metadata.visible !== false;
+  }
+
+  /**
    * デバイスが指定された時間内に応答しているかを確認
    * @param {number} timeoutMs タイムアウト時間（ミリ秒）
    * @returns {boolean} タイムアウト内かどうか

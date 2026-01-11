@@ -67,12 +67,7 @@ export class DeviceService {
     let isNew = false;
 
     if (!device) {
-      // 最大デバイス数チェック
-      const deviceCount = await this.deviceRepository.count();
-      if (deviceCount >= this.options.maxDevices) {
-        this.logger.warn(`Maximum device limit reached (${this.options.maxDevices})`);
-        throw new Error(`Maximum device limit reached (${this.options.maxDevices})`);
-      }
+      // 登録制限なし（表示制限はMeterViewModelで管理）
 
       // 新しいデバイスを作成
       isNew = true;
@@ -338,6 +333,33 @@ export class DeviceService {
     await this.deviceRepository.save(device);
 
     this.logger.info(`Device visibility updated: ${deviceId} (${previousVisibility} -> ${isVisible})`);
+    return true;
+  }
+
+  /**
+   * 個別のデバイスを削除
+   * @param {string} deviceId デバイスID
+   * @returns {Promise<boolean>} 成功したかどうか
+   */
+  async removeDevice(deviceId) {
+    if (!deviceId) {
+      this.logger.warn('Device ID is required for removal');
+      return false;
+    }
+
+    const device = await this.deviceRepository.getById(deviceId);
+    if (!device) {
+      this.logger.warn(`Device not found for removal: ${deviceId}`);
+      return false;
+    }
+
+    // リポジトリから削除
+    await this.deviceRepository.remove(deviceId);
+
+    // 値履歴をクリア
+    await this.valueRepository.clearHistory(deviceId);
+
+    this.logger.info(`Device removed: ${deviceId}`);
     return true;
   }
 

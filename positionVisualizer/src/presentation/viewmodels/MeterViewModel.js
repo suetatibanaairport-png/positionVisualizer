@@ -559,6 +559,47 @@ export class MeterViewModel {
   }
 
   /**
+   * デバイスを削除
+   * @param {string} deviceId デバイスID
+   * @returns {boolean} 成功したかどうか
+   */
+  removeDevice(deviceId) {
+    const index = this.getDeviceIndex(deviceId);
+    if (index < 0) {
+      this.logger.warn(`Cannot remove non-existent device: ${deviceId}`);
+      return false;
+    }
+
+    // 状態をクリア
+    this.state.values[index] = null;
+    this.state.names[index] = null;
+    this.state.icons[index] = null;
+    this.state.connected[index] = false;
+    this.state.visible[index] = true;
+    this.state.lastUpdate[index] = null;
+    this.state.tempDisconnected[index] = false;
+
+    // デバイスマッピングから削除
+    this.deviceMapping.delete(deviceId);
+
+    // 補間状態をクリア
+    this._targetValues[index] = null;
+    this._startValues[index] = null;
+    this._startTime[index] = null;
+    this._interpolating[index] = false;
+
+    // 切断タイマーをクリア
+    if (this._disconnectTimers[index]) {
+      clearTimeout(this._disconnectTimers[index]);
+      this._disconnectTimers[index] = null;
+    }
+
+    this.logger.info(`Device removed from ViewModel: ${deviceId}`);
+    this._notifyChange();
+    return true;
+  }
+
+  /**
    * クリーンアップ処理
    */
   dispose() {

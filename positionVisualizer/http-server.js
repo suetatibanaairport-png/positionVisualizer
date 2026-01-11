@@ -159,35 +159,17 @@ const main = async () => {
       // 現在のディレクトリ情報を出力
       console.log(`カレントディレクトリ: ${process.cwd()}`);
       console.log(`__dirname: ${__dirname}`);
-      // console.log(`実行ファイルパス: ${execDir}`);
-      // console.log(`アプリケーションルート: ${appRootDir}`);
-
-      // console.log('試行するパス一覧 (重複排除済み):');
-      // possiblePaths.forEach((p, i) => console.log(`[${i}] ${p}`));
-
-      // ファイルの存在確認（importの前に）
-      // console.log('ファイル存在確認:');
-      // possiblePaths.forEach(p => {
-      //   try {
-      //     const exists = fs.existsSync(p);
-      //     console.log(`${p}: ${exists ? '存在する' : '存在しない'}`);
-      //   } catch (err) {
-      //     console.log(`${p}: 確認エラー: ${err.message}`);
-      //   }
-      // });
 
       let loaded = false;
 
       // 順番に各パスを試す
       for (const modulePath of possiblePaths) {
         try {
-          // console.log(`パスを試行中: ${modulePath}`);
           resources = await import(modulePath);
           console.log(`★成功★ バンドルリソースを読み込みました: ${modulePath}`);
           loaded = true;
           break;
         } catch (pathErr) {
-          // console.log(`失敗: ${modulePath} - エラー: ${pathErr.message}`);
           // このパスでは読み込めなかった、次を試す
         }
       }
@@ -305,31 +287,6 @@ const main = async () => {
 
     // 重複排除済みのパスリストを配列に変換
     const possiblePaths = Array.from(uniquePaths);
-
-    // console.log('静的ファイルの検索先一覧 (重複排除済み):');
-    // possiblePaths.forEach((p, i) => console.log(`[${i}] ${p}`));
-
-    // 各ディレクトリの存在確認
-    // console.log('ディレクトリ存在確認:');
-    // possiblePaths.forEach(p => {
-    //   try {
-    //     const exists = fs.existsSync(p);
-    //     const isDir = exists && fs.statSync(p).isDirectory();
-    //     console.log(`${p}: ${exists ? (isDir ? 'ディレクトリ存在' : 'ファイル存在') : '存在しない'}`);
-
-    //     // 存在する場合は内容を表示
-    //     if (exists && isDir) {
-    //       try {
-    //         const files = fs.readdirSync(p);
-    //         console.log(`  - 内容: ${files.join(', ')}`);
-    //       } catch (listErr) {
-    //         console.log(`  - 内容の取得に失敗: ${listErr.message}`);
-    //       }
-    //     }
-    //   } catch (err) {
-    //     console.log(`${p}: 確認エラー: ${err.message}`);
-    //   }
-    // });
 
     let staticsDirFound = false;
     let foundStaticsDir = '';

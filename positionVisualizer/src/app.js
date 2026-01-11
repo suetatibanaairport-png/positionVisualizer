@@ -145,6 +145,49 @@ function setupUIEvents(app) {
     });
   }
 
+  // 全デバイス削除ボタンのイベントリスナー
+  const clearAllDevicesButton = document.getElementById('clear-all-devices');
+  if (clearAllDevicesButton) {
+    logger.debug('Setting up clear-all-devices button click event');
+    clearAllDevicesButton.addEventListener('click', async () => {
+      if (confirm('全デバイスを削除しますか？この操作は取り消せません。')) {
+        logger.info('Clearing all devices');
+        await app.resetDevices();
+      }
+    });
+  }
+
+  // デバイス再スキャンボタンのイベントリスナー
+  const rescanDevicesButton = document.getElementById('rescan-devices');
+  if (rescanDevicesButton) {
+    logger.debug('Setting up rescan-devices button click event');
+    rescanDevicesButton.addEventListener('click', async () => {
+      logger.info('Triggering device rescan');
+
+      // ボタンを無効化してスキャン中であることを表示
+      rescanDevicesButton.disabled = true;
+      rescanDevicesButton.textContent = '🔍 スキャン中...';
+
+      try {
+        // AppControllerのscanDevicesメソッドを呼び出し
+        if (app && typeof app.scanDevices === 'function') {
+          await app.scanDevices();
+          logger.info('Device rescan completed successfully');
+        } else {
+          logger.warn('scanDevices method not available on AppController');
+        }
+      } catch (error) {
+        logger.error('Error during device rescan:', error);
+      } finally {
+        // ボタンを再度有効化
+        setTimeout(() => {
+          rescanDevicesButton.disabled = false;
+          rescanDevicesButton.textContent = '🔍 デバイスを再スキャン';
+        }, 2000); // 2秒後に元に戻す（ユーザーフィードバック）
+      }
+    });
+  }
+
   // イベントハンドラー関数を定義（重複コードを防止するため）
   const handleDeviceConnected = () => {
     // デバイス接続時にUIを更新
@@ -202,14 +245,6 @@ function setupUIEvents(app) {
   EventBus.on(EventTypes.DEVICE_VISIBILITY_CHANGED, handleDeviceVisibilityChanged);
   EventBus.on(EventTypes.DEVICE_NAME_CHANGED, handleDeviceNameChanged);
   EventBus.on(EventTypes.DEVICE_ICON_CHANGED, handleDeviceIconChanged);
-
-  // 後方互換性のためにレガシーイベント名もサポート
-  EventBus.on('deviceConnected', handleDeviceConnected);
-  EventBus.on('deviceDisconnected', handleDeviceDisconnected);
-  EventBus.on('devicesReset', handleDevicesReset);
-  EventBus.on('deviceVisibilityChange', handleDeviceVisibilityChanged);
-  EventBus.on('deviceNameChange', handleDeviceNameChanged);
-  EventBus.on('deviceIconChange', handleDeviceIconChanged);
 }
 
 /**

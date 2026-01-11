@@ -10,24 +10,48 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-let latest = { values: [null, null, null, null, null, null], names: [], icon: 'assets/icon.svg', svg: '', ts: Date.now() };
+let latest = {
+  values: [null, null, null, null, null, null],
+  deviceIds: [null, null, null, null, null, null],  // デバイスIDを追跡
+  names: [],
+  icon: 'assets/icon.svg',
+  svg: '',
+  ts: Date.now()
+};
 
 // LeverAPI integration
 const LEVER_API_URL = process.env.LEVER_API_URL || 'http://127.0.0.1:5001';
 console.log('LeverAPI URL:', LEVER_API_URL);
 
-// Map device_id to index (lever1 -> 0, lever2 -> 1, etc.)
-function getDeviceIndex(deviceId) {
+// デバイスID → インデックスの動的マッピング
+const deviceIdToIndex = new Map();
+const indexToDeviceId = new Map();
+let nextAvailableIndex = 0;
+
+/**
+ * デバイスIDに対応するインデックスを取得または割り当て
+ * @param {string} deviceId デバイスID
+ * @returns {number} インデックス（0-5）、失敗時は-1
+ */
+function getOrAssignDeviceIndex(deviceId) {
   if (!deviceId) return -1;
-  // Try to extract number from device_id (lever1 -> 0, lever2 -> 1, etc.)
-  const match = String(deviceId).match(/(\d+)$/);
-  if (match) {
-    const num = parseInt(match[1], 10);
-    if (num >= 1 && num <= 6) {
-      return num - 1;
-    }
+
+  // 既にマッピングがあればそれを返す
+  if (deviceIdToIndex.has(deviceId)) {
+    return deviceIdToIndex.get(deviceId);
   }
-  return -1;
+
+  // 新しいインデックスを割り当て（最大6台まで）
+  if (nextAvailableIndex < 6) {
+    const index = nextAvailableIndex++;
+    deviceIdToIndex.set(deviceId, index);
+    indexToDeviceId.set(index, deviceId);
+    console.log(`[bridge] Assigned device ${deviceId} to index ${index}`);
+    return index;
+  }
+
+  console.log(`[bridge] Device limit reached, cannot assign ${deviceId}`);
+  return -1; // 上限に達した
 }
 
 // Connect to LeverAPI WebSocket (Socket.IO)
@@ -64,13 +88,14 @@ if (LEVER_API_URL) {
           return;
         }
 
-        const index = getDeviceIndex(device_id);
+        const index = getOrAssignDeviceIndex(device_id);
         console.log(`[bridge] device_update: device_id=${device_id}, index=${index}, value=${valueData.value}`);
 
         if (index >= 0 && index < 6 && typeof valueData.value === 'number') {
           latest.values[index] = valueData.value;
+          latest.deviceIds[index] = device_id;  // デバイスIDを保存
           latest.ts = Date.now();
-          console.log(`[bridge] Broadcasting update: index=${index}, value=${valueData.value}`);
+          console.log(`[bridge] Broadcasting update: index=${index}, deviceId=${device_id}, value=${valueData.value}`);
           broadcast({ type: 'state', payload: latest });
         } else {
           console.log(`[bridge] device_update: invalid index or value (index=${index}, value=${valueData.value})`);
@@ -85,21 +110,23 @@ if (LEVER_API_URL) {
       try {
         if (data.updates && typeof data.updates === 'object') {
           const newValues = [...latest.values];
+          const newDeviceIds = [...latest.deviceIds];
           let hasChanges = false;
 
           Object.keys(data.updates).forEach(deviceId => {
-            const index = getDeviceIndex(deviceId);
+            const index = getOrAssignDeviceIndex(deviceId);
             if (index >= 0 && index < 6) {
               const valueData = data.updates[deviceId];
               if (valueData && typeof valueData.value === 'number') {
                 newValues[index] = valueData.value;
+                newDeviceIds[index] = deviceId;  // デバイスIDを保存
                 hasChanges = true;
               }
             }
           });
 
           if (hasChanges) {
-            latest = { ...latest, values: newValues, ts: Date.now() };
+            latest = { ...latest, values: newValues, deviceIds: newDeviceIds, ts: Date.now() };
             broadcast({ type: 'state', payload: latest });
           }
         }
@@ -113,21 +140,23 @@ if (LEVER_API_URL) {
       try {
         if (data && typeof data === 'object') {
           const newValues = [null, null, null, null, null, null];
+          const newDeviceIds = [null, null, null, null, null, null];
           let hasChanges = false;
 
           Object.keys(data).forEach(deviceId => {
-            const index = getDeviceIndex(deviceId);
+            const index = getOrAssignDeviceIndex(deviceId);
             if (index >= 0 && index < 6) {
               const valueData = data[deviceId];
               if (valueData && typeof valueData.value === 'number') {
                 newValues[index] = valueData.value;
+                newDeviceIds[index] = deviceId;  // デバイスIDを保存
                 hasChanges = true;
               }
             }
           });
 
           if (hasChanges) {
-            latest = { ...latest, values: newValues, ts: Date.now() };
+            latest = { ...latest, values: newValues, deviceIds: newDeviceIds, ts: Date.now() };
             broadcast({ type: 'state', payload: latest });
           }
         }
@@ -231,11 +260,12 @@ wss.on('connection', (ws) => {
       }
       // Handle device_update messages from clients (LeverAPI sends via Socket.IO directly)
       else if (data && data.type === 'device_update' && data.device_id && data.data) {
-        const index = getDeviceIndex(data.device_id);
+        const index = getOrAssignDeviceIndex(data.device_id);
         if (index >= 0 && index < 6) {
           const value = data.data.value;
           if (typeof value === 'number') {
             latest.values[index] = value;
+            latest.deviceIds[index] = data.device_id;  // デバイスIDを保存
             latest.ts = Date.now();
             broadcast({ type: 'state', payload: latest }, ws);
           }

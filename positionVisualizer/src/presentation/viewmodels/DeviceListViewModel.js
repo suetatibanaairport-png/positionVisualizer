@@ -110,8 +110,8 @@ export class DeviceListViewModel {
       this._updateDeviceTemporaryDisabled();
     }
 
-    // 表示対象デバイスのフィルタリング
-    const visibleDevices = devices.filter(device => device.visible !== false);
+    // 設定パネルではすべてのデバイスを表示（非表示デバイスもトグルで管理できるように）
+    const visibleDevices = devices;
 
     if (visibleDevices.length === 0) {
       this.logger.debug('表示するデバイスがありません');
@@ -334,6 +334,19 @@ export class DeviceListViewModel {
     iconButtonContainer.appendChild(fileInput);
     controlRow.appendChild(iconButtonContainer);
 
+    // 削除ボタン
+    const deleteButton = document.createElement('button');
+    deleteButton.className = 'device-delete-button';
+    deleteButton.title = 'デバイスを削除';
+    deleteButton.innerHTML = '🗑️';
+    deleteButton.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (confirm(`"${device.name || deviceId}" を削除しますか？`)) {
+        this._handleDeviceDelete(deviceId);
+      }
+    });
+    controlRow.appendChild(deleteButton);
+
     // コントロール行をデバイスグループに追加
     deviceGroup.appendChild(controlRow);
 
@@ -511,9 +524,6 @@ export class DeviceListViewModel {
         this.logger.debug(`[DEBUG TOGGLE] Emitting DEVICE_VISIBILITY_CHANGED event with deviceId: ${deviceId}, isVisible: ${isVisible}`);
         this.eventEmitter.emit(EventTypes.DEVICE_VISIBILITY_CHANGED, { deviceId, isVisible });
 
-        // 後方互換性のために古いイベント名でも発行
-        this.eventEmitter.emit('deviceVisibilityChange', { deviceId, isVisible });
-
         this.logger.debug(`[DEBUG TOGGLE] Visibility change events emitted for device ${deviceId}: ${isVisible ? 'visible' : 'hidden'}`);
       } else {
         this.logger.warn(`[DEBUG TOGGLE] eventEmitter not available for device ${deviceId}`);
@@ -535,9 +545,24 @@ export class DeviceListViewModel {
     // インターフェースを介してイベントを発火（新しい命名規則を使用）
     if (this.eventEmitter) {
       this.eventEmitter.emit(EventTypes.DEVICE_NAME_CHANGED, { deviceId, newName });
+    }
+  }
 
-      // 後方互換性のために古いイベント名でも発行
-      this.eventEmitter.emit('deviceNameChange', { deviceId, newName });
+  /**
+   * デバイス削除をハンドリング
+   * @param {string} deviceId デバイスID
+   * @private
+   */
+  _handleDeviceDelete(deviceId) {
+    this.logger.debug(`Delete device requested: ${deviceId}`);
+
+    // インターフェースを介してイベントを発火
+    if (this.eventEmitter) {
+      this.eventEmitter.emit(EventTypes.COMMAND_REMOVE_DEVICE, { deviceId });
+    } else {
+      // eventEmitterがnullの場合はEventBusを直接使用
+      this.logger.warn(`eventEmitter is null, using EventBus directly for device ${deviceId}`);
+      EventBus.emit(EventTypes.COMMAND_REMOVE_DEVICE, { deviceId });
     }
   }
 
@@ -573,9 +598,6 @@ export class DeviceListViewModel {
           // イベントを発火して大きすぎることを通知（新しい命名規則を使用）
           if (this.eventEmitter) {
             this.eventEmitter.emit(EventTypes.DEVICE_ICON_ERROR, { deviceId, error: 'File size too large (over 1MB)' });
-
-            // 後方互換性のために古いイベント名でも発行
-            this.eventEmitter.emit('deviceIconError', { deviceId, error: 'File size too large (over 1MB)' });
           }
           return;
         }
@@ -583,17 +605,11 @@ export class DeviceListViewModel {
         // アイコン設定イベントを発火（新しい命名規則を使用）
         if (this.eventEmitter) {
           this.eventEmitter.emit(EventTypes.DEVICE_ICON_CHANGED, { deviceId, iconUrl: dataUrl });
-
-          // 後方互換性のために古いイベント名でも発行
-          this.eventEmitter.emit('deviceIconChange', { deviceId, iconUrl: dataUrl });
         }
       } catch (error) {
         this.logger.error(`Error processing icon file for device ${deviceId}:`, error);
         if (this.eventEmitter) {
           this.eventEmitter.emit(EventTypes.DEVICE_ICON_ERROR, { deviceId, error: error.message });
-
-          // 後方互換性のために古いイベント名でも発行
-          this.eventEmitter.emit('deviceIconError', { deviceId, error: error.message });
         }
       }
     };
@@ -602,9 +618,6 @@ export class DeviceListViewModel {
       this.logger.error(`Error reading icon file for device ${deviceId}`);
       if (this.eventEmitter) {
         this.eventEmitter.emit(EventTypes.DEVICE_ICON_ERROR, { deviceId, error: 'File read error' });
-
-        // 後方互換性のために古いイベント名でも発行
-        this.eventEmitter.emit('deviceIconError', { deviceId, error: 'File read error' });
       }
     };
 

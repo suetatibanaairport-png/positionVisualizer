@@ -273,14 +273,6 @@ export class AppController {
     this.eventEmitter.on(EventTypes.DEVICE_ERROR, this.boundHandlers.deviceError, this);
     this.eventEmitter.on(EventTypes.DEVICES_RESET, this.boundHandlers.devicesReset, this);
 
-    // 後方互換性のために古い命名規則のイベントにもリスナーを登録
-    this.eventEmitter.on('deviceConnected', this.boundHandlers.deviceConnected, this);
-    this.eventEmitter.on('deviceDisconnected', this.boundHandlers.deviceDisconnected, this);
-    this.eventEmitter.on('deviceUpdated', this.boundHandlers.deviceUpdated, this);
-    this.eventEmitter.on('deviceValueUpdated', this.boundHandlers.deviceValueUpdated, this);
-    this.eventEmitter.on('deviceError', this.boundHandlers.deviceError, this);
-    this.eventEmitter.on('devicesReset', this.boundHandlers.devicesReset, this);
-
     // ウィンドウのリサイズイベント
     if (typeof window !== 'undefined') {
       window.addEventListener('resize', this.boundHandlers.windowResize);
@@ -1065,6 +1057,45 @@ export class AppController {
   }
 
   /**
+   * デバイスを削除
+   * @param {string} deviceId デバイスID
+   * @returns {Promise<boolean>} 成功したかどうか
+   */
+  async removeDevice(deviceId) {
+    if (!deviceId) {
+      return false;
+    }
+
+    this.logger.info(`Removing device: ${deviceId}`);
+
+    try {
+      // DeviceServiceからデバイスを削除
+      const success = await this.deviceService.removeDevice(deviceId);
+
+      if (success) {
+        // MeterViewModelからデバイスを削除
+        this.meterViewModel.removeDevice(deviceId);
+
+        // DeviceListViewModelを更新
+        this._updateDeviceListViewModel();
+
+        // イベントを発行
+        if (this.eventEmitter) {
+          this.eventEmitter.emit(EventTypes.DEVICE_REMOVED, { deviceId });
+        }
+
+        this.logger.info(`Device removed successfully: ${deviceId}`);
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      this.logger.error(`Error removing device ${deviceId}:`, error);
+      return false;
+    }
+  }
+
+  /**
    * デバイスの表示/非表示を設定
    * @param {string} deviceId デバイスID
    * @param {boolean} isVisible 表示するかどうか
@@ -1146,6 +1177,15 @@ export class AppController {
       const success = await this.deviceService.resetAllDevices();
 
       if (success) {
+        // MeterViewModelのすべてのデバイスマッピングをクリア
+        if (this.meterViewModel.deviceMapping) {
+          const deviceIds = Array.from(this.meterViewModel.deviceMapping.keys());
+          deviceIds.forEach(deviceId => {
+            this.meterViewModel.removeDevice(deviceId);
+          });
+          this.logger.debug(`Removed ${deviceIds.length} devices from MeterViewModel`);
+        }
+
         // MeterViewModelをリセット
         this.meterViewModel.reset();
         this.logger.debug('MeterViewModel reset successful');
@@ -1179,6 +1219,43 @@ export class AppController {
       }
     } catch (error) {
       this.logger.error('Error resetting devices:', error);
+      return false;
+    }
+  }
+
+  /**
+   * デバイスの再スキャン
+   * LeverAPIの/api/scanエンドポイントを呼び出してデバイス検出を開始
+   * @returns {Promise<boolean>} 成功したかどうか
+   */
+  async scanDevices() {
+    this.logger.info('Scanning for devices via LeverAPI');
+
+    try {
+      // LeverAPI URLを取得（デフォルトは http://127.0.0.1:5001）
+      const leverApiUrl = this.options?.leverApiUrl || 'http://127.0.0.1:5001';
+      const scanEndpoint = `${leverApiUrl}/api/scan`;
+
+      this.logger.debug(`Sending scan request to: ${scanEndpoint}`);
+
+      // POSTリクエストを送信
+      const response = await fetch(scanEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        this.logger.info('Device scan initiated successfully:', data);
+        return true;
+      } else {
+        this.logger.warn(`Device scan request failed with status ${response.status}`);
+        return false;
+      }
+    } catch (error) {
+      this.logger.error('Error scanning for devices:', error);
       return false;
     }
   }
@@ -1315,7 +1392,9 @@ export class AppController {
    */
   _initializeDeviceListViewModel() {
     if (this.deviceListViewModel) {
-      this.logger.debug('DeviceListViewModel already initialized');
+      this.logger.debug('DeviceListViewModel already initialized, setting up events');
+      // 既存のViewModelでもイベントリスナーは設定する
+      this._setupDeviceListViewModelEvents();
       return;
     }
 
@@ -1457,58 +1536,15 @@ export class AppController {
       }
     });
 
-    // デバイスの可視性変更イベント（後方互換性用）
-    this.eventEmitter.on('deviceVisibilityChange', async (data) => {
+    // デバイス削除イベント（新しいイベント型）
+    this.eventEmitter.on(EventTypes.COMMAND_REMOVE_DEVICE, async (data) => {
       if (!data || !data.deviceId) return;
 
       try {
-        // 現在のデバイス表示状態を取得
-        const deviceIndex = this.meterViewModel.getDeviceIndex(data.deviceId);
-        if (deviceIndex >= 0) {
-          // MeterViewModel経由でデバイス表示状態を更新
-          this.meterViewModel.setVisible(deviceIndex, data.isVisible);
-
-          // デバイスサービスが実装されていれば、そちらにも通知
-          if (this.deviceService && typeof this.deviceService.setDeviceVisibility === 'function') {
-            await this.deviceService.setDeviceVisibility(data.deviceId, data.isVisible);
-          }
-
-          this.logger.debug(`Device visibility changed (legacy): ${data.deviceId} -> ${data.isVisible ? 'visible' : 'hidden'}`);
-
-          // プレビューの更新を強制
-          this.meterViewModel._notifyChange();
-
-          // DeviceListViewModelも更新（存在する場合）
-          this._updateDeviceListViewModel();
-        }
+        await this.removeDevice(data.deviceId);
+        this.logger.info(`Device deleted: ${data.deviceId}`);
       } catch (error) {
-        this.logger.error(`Error handling device visibility change for ${data.deviceId}:`, error);
-      }
-    });
-
-    // デバイス名変更イベント
-    this.eventEmitter.on('deviceNameChange', async (data) => {
-      if (!data || !data.deviceId || !data.newName) return;
-
-      try {
-        // デバイス名を設定
-        await this.setDeviceName(data.deviceId, data.newName);
-        this.logger.debug(`Device name changed: ${data.deviceId} -> ${data.newName}`);
-      } catch (error) {
-        this.logger.error(`Error handling device name change for ${data.deviceId}:`, error);
-      }
-    });
-
-    // デバイスアイコン変更イベント
-    this.eventEmitter.on('deviceIconChange', async (data) => {
-      if (!data || !data.deviceId || !data.iconUrl) return;
-
-      try {
-        // デバイスアイコンを設定
-        await this.setDeviceIcon(data.deviceId, data.iconUrl);
-        this.logger.debug(`Device icon changed: ${data.deviceId}`);
-      } catch (error) {
-        this.logger.error(`Error handling device icon change for ${data.deviceId}:`, error);
+        this.logger.error(`Error deleting device ${data.deviceId}:`, error);
       }
     });
 
@@ -1661,14 +1697,6 @@ export class AppController {
         this.eventEmitter.off(EventTypes.DEVICE_VALUE_UPDATED, this.boundHandlers.deviceValueUpdated);
         this.eventEmitter.off(EventTypes.DEVICE_ERROR, this.boundHandlers.deviceError);
         this.eventEmitter.off(EventTypes.DEVICES_RESET, this.boundHandlers.devicesReset);
-
-        // 古いイベント名の解除
-        this.eventEmitter.off('deviceConnected', this.boundHandlers.deviceConnected);
-        this.eventEmitter.off('deviceDisconnected', this.boundHandlers.deviceDisconnected);
-        this.eventEmitter.off('deviceUpdated', this.boundHandlers.deviceUpdated);
-        this.eventEmitter.off('deviceValueUpdated', this.boundHandlers.deviceValueUpdated);
-        this.eventEmitter.off('deviceError', this.boundHandlers.deviceError);
-        this.eventEmitter.off('devicesReset', this.boundHandlers.devicesReset);
       }
     }
 

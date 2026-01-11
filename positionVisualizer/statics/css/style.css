@@ -972,6 +972,46 @@ button:disabled:hover {
   transform: none;
 }
 
+/* 再スキャンボタン */
+.rescan-button {
+  width: 100%;
+  margin-bottom: 16px;
+  background: linear-gradient(135deg, #5FADCF 0%, #4a8fb8 100%);
+  border: 1px solid #4a8fb8;
+  color: white;
+  padding: 12px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(95, 173, 207, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.rescan-button:hover {
+  background: linear-gradient(135deg, #7F57B8 0%, #5FADCF 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(127, 87, 184, 0.4);
+}
+
+.rescan-button:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(95, 173, 207, 0.3);
+}
+
+.rescan-button:disabled {
+  background: #334155;
+  color: #64748b;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+  opacity: 0.6;
+}
+
 /* ステータス */
 .status {
   margin-top: 16px;
@@ -1246,6 +1286,37 @@ button:disabled:hover {
 
 .reset-button:hover {
   background-color: #7b341e;
+}
+
+/* デバイス削除ボタン（個別） */
+.device-delete-button {
+  background: transparent;
+  border: 1px solid #dc2626;
+  color: #dc2626;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: auto;
+  flex: 0 0 auto;
+}
+
+.device-delete-button:hover {
+  background: rgba(220, 38, 38, 0.1);
+  color: #ef4444;
+  border-color: #ef4444;
+}
+
+/* 全デバイス削除ボタン（危険操作） */
+.danger-button {
+  background-color: #dc2626 !important;
+  border-color: #b91c1c !important;
+}
+
+.danger-button:hover {
+  background-color: #b91c1c !important;
+  box-shadow: 0 2px 4px rgba(220, 38, 38, 0.3) !important;
 }
 
 /* スクロールバーのスタイル */
