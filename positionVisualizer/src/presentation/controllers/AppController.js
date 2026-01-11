@@ -978,16 +978,6 @@ export class AppController {
             iconUrl: this.deviceService.getDeviceIconUrl?.(deviceId)
           }
         });
-
-        // 後方互換性のため
-        this.eventEmitter.emit('deviceUpdated', {
-          deviceId,
-          device: {
-            id: deviceId,
-            name: name,
-            iconUrl: this.deviceService.getDeviceIconUrl?.(deviceId)
-          }
-        });
       }
 
       return true;
@@ -1035,16 +1025,6 @@ export class AppController {
             id: deviceId,
             iconUrl: iconUrl,
             // 他の既存のプロパティを含める
-            name: this.deviceService.getDeviceName?.(deviceId)
-          }
-        });
-
-        // 後方互換性のため
-        this.eventEmitter.emit('deviceUpdated', {
-          deviceId,
-          device: {
-            id: deviceId,
-            iconUrl: iconUrl,
             name: this.deviceService.getDeviceName?.(deviceId)
           }
         });
@@ -1137,17 +1117,6 @@ export class AppController {
               id: deviceId,
               visible: isVisible,
               // 他の既存のプロパティを含める
-              name: this.deviceService.getDeviceName?.(deviceId),
-              iconUrl: this.deviceService.getDeviceIconUrl?.(deviceId)
-            }
-          });
-
-          // 後方互換性のため
-          this.eventEmitter.emit('deviceUpdated', {
-            deviceId,
-            device: {
-              id: deviceId,
-              visible: isVisible,
               name: this.deviceService.getDeviceName?.(deviceId),
               iconUrl: this.deviceService.getDeviceIconUrl?.(deviceId)
             }

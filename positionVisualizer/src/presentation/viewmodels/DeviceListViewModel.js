@@ -74,6 +74,21 @@ export class DeviceListViewModel {
   }
 
   /**
+   * イベントを安全に発行
+   * @param {string} eventType イベントタイプ
+   * @param {Object} data イベントデータ
+   * @private
+   */
+  _emitEvent(eventType, data) {
+    if (this.eventEmitter) {
+      this.eventEmitter.emit(eventType, data);
+    } else {
+      this.logger.warn(`eventEmitter not available for event: ${eventType}`);
+      EventBus.emit(eventType, data);
+    }
+  }
+
+  /**
    * 初期化 - DOM要素の参照を取得
    */
   initialize() {
@@ -520,14 +535,9 @@ export class DeviceListViewModel {
       }
 
       // インターフェースを介してイベントを発火（新しい命名規則を使用）
-      if (this.eventEmitter) {
-        this.logger.debug(`[DEBUG TOGGLE] Emitting DEVICE_VISIBILITY_CHANGED event with deviceId: ${deviceId}, isVisible: ${isVisible}`);
-        this.eventEmitter.emit(EventTypes.DEVICE_VISIBILITY_CHANGED, { deviceId, isVisible });
-
-        this.logger.debug(`[DEBUG TOGGLE] Visibility change events emitted for device ${deviceId}: ${isVisible ? 'visible' : 'hidden'}`);
-      } else {
-        this.logger.warn(`[DEBUG TOGGLE] eventEmitter not available for device ${deviceId}`);
-      }
+      this.logger.debug(`[DEBUG TOGGLE] Emitting DEVICE_VISIBILITY_CHANGED event with deviceId: ${deviceId}, isVisible: ${isVisible}`);
+      this._emitEvent(EventTypes.DEVICE_VISIBILITY_CHANGED, { deviceId, isVisible });
+      this.logger.debug(`[DEBUG TOGGLE] Visibility change events emitted for device ${deviceId}: ${isVisible ? 'visible' : 'hidden'}`);
     } catch (error) {
       this.logger.error(`[DEBUG TOGGLE] Error in visibility toggle handler for device ${deviceId}:`, error);
     }
@@ -543,9 +553,7 @@ export class DeviceListViewModel {
     this.logger.debug(`Change device name: ${deviceId} -> ${newName}`);
 
     // インターフェースを介してイベントを発火（新しい命名規則を使用）
-    if (this.eventEmitter) {
-      this.eventEmitter.emit(EventTypes.DEVICE_NAME_CHANGED, { deviceId, newName });
-    }
+    this._emitEvent(EventTypes.DEVICE_NAME_CHANGED, { deviceId, newName });
   }
 
   /**
@@ -557,13 +565,7 @@ export class DeviceListViewModel {
     this.logger.debug(`Delete device requested: ${deviceId}`);
 
     // インターフェースを介してイベントを発火
-    if (this.eventEmitter) {
-      this.eventEmitter.emit(EventTypes.COMMAND_REMOVE_DEVICE, { deviceId });
-    } else {
-      // eventEmitterがnullの場合はEventBusを直接使用
-      this.logger.warn(`eventEmitter is null, using EventBus directly for device ${deviceId}`);
-      EventBus.emit(EventTypes.COMMAND_REMOVE_DEVICE, { deviceId });
-    }
+    this._emitEvent(EventTypes.COMMAND_REMOVE_DEVICE, { deviceId });
   }
 
   /**
@@ -596,29 +598,21 @@ export class DeviceListViewModel {
 
         if (size > 1024 * 1024) { // 1MB以上
           // イベントを発火して大きすぎることを通知（新しい命名規則を使用）
-          if (this.eventEmitter) {
-            this.eventEmitter.emit(EventTypes.DEVICE_ICON_ERROR, { deviceId, error: 'File size too large (over 1MB)' });
-          }
+          this._emitEvent(EventTypes.DEVICE_ICON_ERROR, { deviceId, error: 'File size too large (over 1MB)' });
           return;
         }
 
         // アイコン設定イベントを発火（新しい命名規則を使用）
-        if (this.eventEmitter) {
-          this.eventEmitter.emit(EventTypes.DEVICE_ICON_CHANGED, { deviceId, iconUrl: dataUrl });
-        }
+        this._emitEvent(EventTypes.DEVICE_ICON_CHANGED, { deviceId, iconUrl: dataUrl });
       } catch (error) {
         this.logger.error(`Error processing icon file for device ${deviceId}:`, error);
-        if (this.eventEmitter) {
-          this.eventEmitter.emit(EventTypes.DEVICE_ICON_ERROR, { deviceId, error: error.message });
-        }
+        this._emitEvent(EventTypes.DEVICE_ICON_ERROR, { deviceId, error: error.message });
       }
     };
 
     reader.onerror = () => {
       this.logger.error(`Error reading icon file for device ${deviceId}`);
-      if (this.eventEmitter) {
-        this.eventEmitter.emit(EventTypes.DEVICE_ICON_ERROR, { deviceId, error: 'File read error' });
-      }
+      this._emitEvent(EventTypes.DEVICE_ICON_ERROR, { deviceId, error: 'File read error' });
     };
 
     // ファイルをデータURLとして読み込み

@@ -54,6 +54,22 @@ function getOrAssignDeviceIndex(deviceId) {
   return -1; // 上限に達した
 }
 
+/**
+ * デバイス値を更新
+ * @param {string} deviceId デバイスID
+ * @param {number} value 値
+ * @returns {boolean} 更新成功したか
+ */
+function updateDeviceValue(deviceId, value) {
+  const index = getOrAssignDeviceIndex(deviceId);
+  if (index < 0 || index >= 6) return false;
+  if (typeof value !== 'number') return false;
+
+  latest.values[index] = value;
+  latest.deviceIds[index] = deviceId;
+  return true;
+}
+
 // Connect to LeverAPI WebSocket (Socket.IO)
 let leverApiSocket = null;
 if (LEVER_API_URL) {
@@ -88,17 +104,15 @@ if (LEVER_API_URL) {
           return;
         }
 
-        const index = getOrAssignDeviceIndex(device_id);
-        console.log(`[bridge] device_update: device_id=${device_id}, index=${index}, value=${valueData.value}`);
+        console.log(`[bridge] device_update: device_id=${device_id}, value=${valueData.value}`);
 
-        if (index >= 0 && index < 6 && typeof valueData.value === 'number') {
-          latest.values[index] = valueData.value;
-          latest.deviceIds[index] = device_id;  // デバイスIDを保存
+        if (updateDeviceValue(device_id, valueData.value)) {
           latest.ts = Date.now();
+          const index = deviceIdToIndex.get(device_id);
           console.log(`[bridge] Broadcasting update: index=${index}, deviceId=${device_id}, value=${valueData.value}`);
           broadcast({ type: 'state', payload: latest });
         } else {
-          console.log(`[bridge] device_update: invalid index or value (index=${index}, value=${valueData.value})`);
+          console.log(`[bridge] device_update: failed to update device ${device_id}`);
         }
       } catch (error) {
         console.error('Error processing device_update:', error);
@@ -109,24 +123,17 @@ if (LEVER_API_URL) {
     leverApiSocket.on('devices_update', (data) => {
       try {
         if (data.updates && typeof data.updates === 'object') {
-          const newValues = [...latest.values];
-          const newDeviceIds = [...latest.deviceIds];
           let hasChanges = false;
 
           Object.keys(data.updates).forEach(deviceId => {
-            const index = getOrAssignDeviceIndex(deviceId);
-            if (index >= 0 && index < 6) {
-              const valueData = data.updates[deviceId];
-              if (valueData && typeof valueData.value === 'number') {
-                newValues[index] = valueData.value;
-                newDeviceIds[index] = deviceId;  // デバイスIDを保存
-                hasChanges = true;
-              }
+            const valueData = data.updates[deviceId];
+            if (valueData && updateDeviceValue(deviceId, valueData.value)) {
+              hasChanges = true;
             }
           });
 
           if (hasChanges) {
-            latest = { ...latest, values: newValues, deviceIds: newDeviceIds, ts: Date.now() };
+            latest.ts = Date.now();
             broadcast({ type: 'state', payload: latest });
           }
         }
@@ -139,24 +146,17 @@ if (LEVER_API_URL) {
     leverApiSocket.on('all_values', (data) => {
       try {
         if (data && typeof data === 'object') {
-          const newValues = [null, null, null, null, null, null];
-          const newDeviceIds = [null, null, null, null, null, null];
           let hasChanges = false;
 
           Object.keys(data).forEach(deviceId => {
-            const index = getOrAssignDeviceIndex(deviceId);
-            if (index >= 0 && index < 6) {
-              const valueData = data[deviceId];
-              if (valueData && typeof valueData.value === 'number') {
-                newValues[index] = valueData.value;
-                newDeviceIds[index] = deviceId;  // デバイスIDを保存
-                hasChanges = true;
-              }
+            const valueData = data[deviceId];
+            if (valueData && updateDeviceValue(deviceId, valueData.value)) {
+              hasChanges = true;
             }
           });
 
           if (hasChanges) {
-            latest = { ...latest, values: newValues, deviceIds: newDeviceIds, ts: Date.now() };
+            latest.ts = Date.now();
             broadcast({ type: 'state', payload: latest });
           }
         }
