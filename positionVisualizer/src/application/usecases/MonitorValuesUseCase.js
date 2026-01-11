@@ -27,12 +27,12 @@ export class MonitorValuesUseCase {
     this.eventBus = eventBus;
     this.logger = logger || { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} };
     this.options = {
-      monitoringInterval: 100,       // モニタリング間隔（ミリ秒）
+      monitoringInterval: 50,        // モニタリング間隔（ミリ秒）- より頻繁に
       useWebSocketUpdates: true,     // WebSocketからの更新を使用するか
       adaptivePolling: true,         // 適応的なポーリングを使用するか
-      minPollingInterval: 50,        // 最小ポーリング間隔（ミリ秒）
-      maxPollingInterval: 1000,      // 最大ポーリング間隔（ミリ秒）
-      valueChangeThreshold: 5,       // 値変更通知のしきい値
+      minPollingInterval: 30,        // 最小ポーリング間隔（ミリ秒）
+      maxPollingInterval: 200,       // 最大ポーリング間隔（ミリ秒）- 最大でも200ms
+      valueChangeThreshold: 3,       // 値変更通知のしきい値 - より敏感に検出
       ...options
     };
 

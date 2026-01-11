@@ -220,7 +220,7 @@ export class DeviceListViewModel {
   _createDeviceElement(device, isReplayMode, isDisabled = false) {
     const deviceId = device.id;
 
-    // デバイスグループ要素
+    // デバイスグループ要素（フレックスコンテナ）
     const deviceGroup = document.createElement('div');
     deviceGroup.id = `device-group-${deviceId}`;
     deviceGroup.className = 'device-group';
@@ -241,82 +241,52 @@ export class DeviceListViewModel {
       deviceGroup.appendChild(disabledReason);
     }
 
-    // デバイス名ラベル
-    const nameLabel = document.createElement('div');
-    nameLabel.className = 'device-name';
-    nameLabel.textContent = device.name || deviceId;
-    nameLabel.title = device.name || deviceId;
-    deviceGroup.appendChild(nameLabel);
+    // 左カラム：デバイスアイコン画像（2行分の高さ）
+    const iconContainer = document.createElement('div');
+    iconContainer.className = 'device-icon-container';
+
+    // 背景画像（ユーザーアイコン）
+    const iconDisplay = document.createElement('img');
+    iconDisplay.className = 'device-icon-display';
+    iconDisplay.src = device.iconUrl || './assets/icon.svg';
+    iconDisplay.onerror = () => {
+      iconDisplay.src = './assets/icon.svg';
+    };
+
+    // フォアグラウンド画像（icon.svg）
+    const iconOverlay = document.createElement('img');
+    iconOverlay.className = 'device-icon-overlay';
+    iconOverlay.src = './assets/icon.svg';
+
+    iconContainer.appendChild(iconDisplay);
+    iconContainer.appendChild(iconOverlay);
+    deviceGroup.appendChild(iconContainer);
+
+    // 右カラム：2行のコンテンツ
+    const contentColumn = document.createElement('div');
+    contentColumn.className = 'device-content-column';
+
+    // 1行目：デバイスID + ボタン群（右寄せ）
+    const topRow = document.createElement('div');
+    topRow.className = 'device-top-row';
 
     // デバイスIDコンテナ
     const deviceIdContainer = document.createElement('div');
     deviceIdContainer.className = 'device-id-container';
     deviceIdContainer.textContent = `ID: ${deviceId}`;
     deviceIdContainer.title = deviceId;
-    deviceGroup.appendChild(deviceIdContainer);
+    topRow.appendChild(deviceIdContainer);
 
-    // コントロール行
-    const controlRow = document.createElement('div');
-    controlRow.className = 'device-controls';
+    // ボタン群コンテナ（右寄せ）
+    const buttonGroup = document.createElement('div');
+    buttonGroup.className = 'device-button-group';
 
-    // 表示/非表示トグル
-    const visibilityToggle = document.createElement('label');
-    visibilityToggle.className = 'toggle-switch';
-    visibilityToggle.title = '表示/非表示';
-
-    const toggleInput = document.createElement('input');
-    toggleInput.type = 'checkbox';
-    toggleInput.checked = device.visible !== false;
-    toggleInput.addEventListener('change', () => {
-      this._handleVisibilityChange(deviceId, toggleInput.checked);
-    });
-
-    const toggleSpan = document.createElement('span');
-    toggleSpan.className = 'toggle-slider';
-
-    visibilityToggle.appendChild(toggleInput);
-    visibilityToggle.appendChild(toggleSpan);
-    controlRow.appendChild(visibilityToggle);
-
-    // デバイス名編集
-    const nameInput = document.createElement('input');
-    nameInput.type = 'text';
-    nameInput.className = 'device-name-input';
-    nameInput.value = device.name || deviceId;
-    nameInput.placeholder = 'デバイス名';
-    nameInput.addEventListener('change', () => {
-      this._handleNameChange(deviceId, nameInput.value);
-    });
-    controlRow.appendChild(nameInput);
-
-    // アイコン選択ボタン
-    const iconButtonContainer = document.createElement('div');
-    iconButtonContainer.className = 'icon-button-container';
-
+    // アイコン設定ボタン（1行目のボタン群に配置）
     const iconButton = document.createElement('button');
     iconButton.className = 'icon-button';
+    iconButton.textContent = 'アイコン設定';
     iconButton.title = 'アイコンを選択';
-
-    // アイコンまたはプレースホルダーを表示
-    const iconImg = document.createElement('img');
-    iconImg.className = 'device-icon-preview';
-    iconImg.src = device.iconUrl || './assets/icon.svg';
-    iconImg.onerror = () => {
-      iconImg.src = './assets/icon.svg';
-    };
-    iconButton.appendChild(iconImg);
-
-    // アイコンボタンのラベル
-    const iconButtonLabel = document.createElement('span');
-    iconButtonLabel.className = 'icon-button-label';
-    iconButtonLabel.textContent = 'アイコン';
-
-    // 再生モードの場合はクラスを追加
-    if (isReplayMode) {
-      iconButtonLabel.classList.add('replay-mode');
-    }
-
-    iconButton.appendChild(iconButtonLabel);
+    buttonGroup.appendChild(iconButton);
 
     // ファイル入力（隠す）
     const fileInput = document.createElement('input');
@@ -336,25 +306,116 @@ export class DeviceListViewModel {
     // ファイル選択時の処理
     fileInput.addEventListener('change', (event) => this._handleIconFileSelection(event));
 
-    iconButtonContainer.appendChild(iconButton);
-    iconButtonContainer.appendChild(fileInput);
-    controlRow.appendChild(iconButtonContainer);
-
-    // 削除ボタン
+    // 削除ボタン（1行目のボタン群に配置）
     const deleteButton = document.createElement('button');
     deleteButton.className = 'device-delete-button';
     deleteButton.title = 'デバイスを削除';
-    deleteButton.innerHTML = '🗑️';
+    deleteButton.textContent = '🗑️';
     deleteButton.addEventListener('click', (e) => {
       e.preventDefault();
       if (confirm(`"${device.name || deviceId}" を削除しますか？`)) {
         this._handleDeviceDelete(deviceId);
       }
     });
-    controlRow.appendChild(deleteButton);
+    buttonGroup.appendChild(deleteButton);
 
-    // コントロール行をデバイスグループに追加
-    deviceGroup.appendChild(controlRow);
+    // ファイル入力をボタン群に追加
+    buttonGroup.appendChild(fileInput);
+
+    // 1行目を完成（ボタン群を追加）
+    topRow.appendChild(buttonGroup);
+    contentColumn.appendChild(topRow);
+
+    // 2行目：トグル + デバイス名編集コンテナ + 編集ボタン（右寄せ）
+    const bottomRow = document.createElement('div');
+    bottomRow.className = 'device-bottom-row';
+
+    // 左側コンテナ（トグル + デバイス名）
+    const leftContainer = document.createElement('div');
+    leftContainer.style.display = 'flex';
+    leftContainer.style.gap = '12px';
+    leftContainer.style.alignItems = 'center';
+    leftContainer.style.flex = '1';
+
+    // 表示/非表示トグル
+    const visibilityToggle = document.createElement('label');
+    visibilityToggle.className = 'toggle-switch';
+    visibilityToggle.title = '表示/非表示';
+
+    const toggleInput = document.createElement('input');
+    toggleInput.type = 'checkbox';
+    toggleInput.checked = device.visible !== false;
+    toggleInput.addEventListener('change', () => {
+      this._handleVisibilityChange(deviceId, toggleInput.checked);
+    });
+
+    const toggleSpan = document.createElement('span');
+    toggleSpan.className = 'toggle-slider';
+
+    visibilityToggle.appendChild(toggleInput);
+    visibilityToggle.appendChild(toggleSpan);
+    leftContainer.appendChild(visibilityToggle);
+
+    // デバイス名表示用のコンテナ
+    const nameEditContainer = document.createElement('div');
+    nameEditContainer.className = 'device-name-edit-container';
+
+    // デバイス名ラベル（通常表示）
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'device-name-text';
+    nameSpan.textContent = device.name || deviceId;
+
+    // 編集用入力（初期非表示）
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.className = 'device-name-input';
+    nameInput.value = device.name || deviceId;
+    nameInput.placeholder = 'デバイス名';
+    nameInput.style.display = 'none';
+
+    nameEditContainer.appendChild(nameSpan);
+    nameEditContainer.appendChild(nameInput);
+    leftContainer.appendChild(nameEditContainer);
+    bottomRow.appendChild(leftContainer);
+
+    // 編集ボタン（2行目の右寄せに配置）
+    const editButton = document.createElement('button');
+    editButton.className = 'device-name-edit-btn';
+    editButton.textContent = '✏️';
+    editButton.title = '名前を編集';
+    bottomRow.appendChild(editButton);
+
+    // 編集開始
+    editButton.addEventListener('click', () => {
+      nameSpan.style.display = 'none';
+      nameInput.style.display = 'block';
+      nameInput.value = nameSpan.textContent;
+      nameInput.focus();
+      nameInput.select();
+      deviceGroup.dataset.isEditing = 'true';
+    });
+
+    // 編集完了（blur）
+    nameInput.addEventListener('blur', () => {
+      this._finishEditing(deviceGroup, nameInput, nameSpan, editButton, deviceId);
+    });
+
+    // 編集完了（Enter）/ キャンセル（Escape）
+    nameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        nameInput.blur();
+      } else if (e.key === 'Escape') {
+        nameInput.value = nameSpan.textContent;
+        nameInput.blur();
+      }
+    });
+
+    // 2行目を完成
+    contentColumn.appendChild(bottomRow);
+
+    // 右カラムをデバイスグループに追加
+    deviceGroup.appendChild(contentColumn);
 
     return deviceGroup;
   }
@@ -370,33 +431,15 @@ export class DeviceListViewModel {
   _updateDeviceElement(deviceGroup, device, isReplayMode, isDisabled = false) {
     const deviceId = device.id;
 
-    // デバイス名を更新
-    const nameLabel = deviceGroup.querySelector('.device-name');
-    if (nameLabel) {
-      nameLabel.textContent = device.name || deviceId;
-      nameLabel.title = device.name || deviceId;
-    }
-
-    // 名前入力フィールドを更新
-    const nameInput = deviceGroup.querySelector('.device-name-input');
-    if (nameInput) {
-      nameInput.value = device.name || deviceId;
-    }
-
-    // デバイスIDコンテナを更新
-    const deviceIdContainer = deviceGroup.querySelector('.device-id-container');
-    if (!deviceIdContainer) {
-      // デバイスIDコンテナがなければ追加
-      const newDeviceIdContainer = document.createElement('div');
-      newDeviceIdContainer.className = 'device-id-container';
-      newDeviceIdContainer.textContent = `ID: ${deviceId}`;
-      newDeviceIdContainer.title = deviceId;
-      // nameLabel の後に挿入
-      const nameLabel = deviceGroup.querySelector('.device-name');
-      if (nameLabel && nameLabel.nextSibling) {
-        deviceGroup.insertBefore(newDeviceIdContainer, nameLabel.nextSibling);
-      } else {
-        deviceGroup.appendChild(newDeviceIdContainer);
+    // 編集中でなければ名前を更新
+    if (deviceGroup.dataset.isEditing !== 'true') {
+      const nameSpan = deviceGroup.querySelector('.device-name-text');
+      const nameInput = deviceGroup.querySelector('.device-name-input');
+      if (nameSpan) {
+        nameSpan.textContent = device.name || deviceId;
+      }
+      if (nameInput) {
+        nameInput.value = device.name || deviceId;
       }
     }
 
@@ -406,30 +449,18 @@ export class DeviceListViewModel {
       toggleInput.checked = device.visible !== false;
     }
 
-    // アイコンを更新（存在する場合）
-    if (device.iconUrl) {
-      const iconImg = deviceGroup.querySelector('.device-icon-preview');
-      if (iconImg) {
-        iconImg.src = device.iconUrl;
-        this.logger.debug(`デバイス一覧にアイコン設定: ${deviceId}, URL=${device.iconUrl}`);
-      }
-    } else {
-      this.logger.debug(`デバイス一覧のアイコンなし: ${deviceId}`);
+    // 左カラムのアイコン表示を更新
+    const iconDisplay = deviceGroup.querySelector('.device-icon-display');
+    if (iconDisplay && device.iconUrl) {
+      iconDisplay.src = device.iconUrl;
+      this.logger.debug(`デバイスアイコン更新: ${deviceId}, URL=${device.iconUrl}`);
     }
 
     // 再生モード関連のクラス設定
     if (isReplayMode) {
       deviceGroup.classList.add('replay-mode');
-      const iconButtonLabel = deviceGroup.querySelector('.icon-button-label');
-      if (iconButtonLabel) {
-        iconButtonLabel.classList.add('replay-mode');
-      }
     } else {
       deviceGroup.classList.remove('replay-mode');
-      const iconButtonLabel = deviceGroup.querySelector('.icon-button-label');
-      if (iconButtonLabel) {
-        iconButtonLabel.classList.remove('replay-mode');
-      }
     }
 
     // 無効化状態の更新
@@ -471,6 +502,28 @@ export class DeviceListViewModel {
         }
       }
     });
+  }
+
+  /**
+   * デバイス名編集を完了
+   * @param {HTMLElement} deviceGroup デバイスグループ要素
+   * @param {HTMLInputElement} nameInput 名前入力要素
+   * @param {HTMLElement} nameSpan 名前表示要素
+   * @param {HTMLElement} editButton 編集ボタン要素
+   * @param {string} deviceId デバイスID
+   * @private
+   */
+  _finishEditing(deviceGroup, nameInput, nameSpan, editButton, deviceId) {
+    const newName = nameInput.value.trim();
+
+    nameInput.style.display = 'none';
+    nameSpan.style.display = 'inline';
+    deviceGroup.dataset.isEditing = 'false';
+
+    if (newName && newName !== nameSpan.textContent) {
+      nameSpan.textContent = newName;
+      this._handleNameChange(deviceId, newName);
+    }
   }
 
   /**

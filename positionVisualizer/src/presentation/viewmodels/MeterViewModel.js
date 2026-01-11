@@ -22,9 +22,9 @@ export class MeterViewModel {
   constructor(options = {}, eventEmitter, logger) {
     this.options = {
       maxDevices: 6,                // 最大デバイス数
-      interpolationTime: 200,       // 値の補間時間（ミリ秒）
+      interpolationTime: 80,        // 値の補間時間（ミリ秒）- レスポンシブに
       enableSmoothing: true,        // 平滑化を有効化
-      smoothingFactor: 0.3,         // 平滑化係数 (0-1)
+      smoothingFactor: 0.7,         // 平滑化係数 (0-1) - より即応性を高める
       ...options
     };
 

@@ -57,6 +57,9 @@ export class OverlaySyncService {
       // MeterViewModel状態変更
       'meterViewModel:change',
 
+      // デバイス値更新（ライブデータ）
+      EventTypes.DEVICE_VALUE_UPDATED,
+
       // デバイス値更新（再生データ）
       EventTypes.DEVICE_VALUE_REPLAYED,
 
