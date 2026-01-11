@@ -9,7 +9,7 @@ import { EventTypes } from '../../domain/events/EventTypes.js';
 /**
  * イベントエミッターのクラス
  */
-export class EventEmitter {
+class EventEmitter {
   /**
    * イベントエミッターのコンストラクタ
    */

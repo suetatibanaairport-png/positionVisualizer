@@ -47,4 +47,20 @@ export class ILogger {
   error(message, ...args) {
     throw new Error('Not implemented: ILogger.error()');
   }
+
+  /**
+   * ログレベルの設定
+   * @param {string} level ログレベル
+   */
+  set level(level) {
+    throw new Error('Not implemented: ILogger.level setter');
+  }
+
+  /**
+   * ログレベルの取得
+   * @returns {string} ログレベル
+   */
+  get level() {
+    throw new Error('Not implemented: ILogger.level getter');
+  }
 }

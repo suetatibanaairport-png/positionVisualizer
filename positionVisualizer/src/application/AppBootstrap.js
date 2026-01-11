@@ -252,10 +252,15 @@ class AppBootstrap {
       infraComponents.logger
     );
 
-    // レンダラー
-    const meterRenderer = containerElement ? new MeterRenderer(containerElement, {
-      size: Math.min(containerElement.clientWidth || 500, containerElement.clientHeight || 500)
-    }) : null;
+    // レンダラー（ロガーを注入）
+    const meterRendererLogger = new LoggerAdapter('MeterRenderer');
+    const meterRenderer = containerElement ? new MeterRenderer(
+      containerElement,
+      {
+        size: Math.min(containerElement.clientWidth || 500, containerElement.clientHeight || 500)
+      },
+      meterRendererLogger
+    ) : null;
 
     // デバイスリストViewModel（インターフェースを注入）
     const deviceListViewModel = new DeviceListViewModel(

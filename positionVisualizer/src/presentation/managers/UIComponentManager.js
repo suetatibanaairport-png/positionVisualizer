@@ -276,9 +276,9 @@ export class UIComponentManager {
 
       try {
         if (this.appController && this.appController.deviceSettingsManager) {
-          await this.appController.deviceSettingsManager.setDeviceName(data.deviceId, data.name);
+          await this.appController.deviceSettingsManager.setDeviceName(data.deviceId, data.newName);
         }
-        this.logger.debug(`Device name changed: ${data.deviceId} -> ${data.name}`);
+        this.logger.debug(`Device name changed: ${data.deviceId} -> ${data.newName}`);
       } catch (error) {
         this.logger.error(`Error handling device name change for ${data.deviceId}:`, error);
       }

@@ -6,6 +6,7 @@
 
 import { Device } from '../../domain/entities/Device.js';
 import { DeviceValue } from '../../domain/entities/DeviceValue.js';
+import { Icon } from '../../domain/entities/Icon.js';
 import {
   DeviceDiscoveredEvent,
   DeviceConnectedEvent,
@@ -220,6 +221,15 @@ export class DeviceService {
     if (!device) {
       this.logger.warn(`Cannot set icon for non-existent device: ${deviceId}`);
       return false;
+    }
+
+    // アイコンをプリロードしてから設定
+    const icon = new Icon(deviceId, iconUrl);
+    const preloaded = await icon.preload();
+
+    if (!preloaded) {
+      this.logger.warn(`Failed to preload icon for device ${deviceId}: ${iconUrl}`);
+      // プリロード失敗でもURLは設定（フォールバック動作）
     }
 
     const oldIconUrl = device.iconUrl;

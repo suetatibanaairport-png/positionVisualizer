@@ -4,10 +4,9 @@
  * UIの状態を管理し、アプリケーション層とプレゼンテーション層の橋渡しをする
  */
 
-import { IEventEmitter } from '../services/IEventEmitter.js';
-import { ILogger } from '../services/ILogger.js';
+import { IEventBus } from '../../domain/services/IEventBus.js';
+import { ILogger } from '../../domain/services/ILogger.js';
 import { EventTypes } from '../../domain/events/EventTypes.js';
-import { EventBus } from '../../infrastructure/services/EventBus.js';
 
 /**
  * デバイスリストのビューモデルクラス
@@ -16,7 +15,7 @@ export class DeviceListViewModel {
   /**
    * デバイスリストのビューモデルを初期化
    * @param {Object} options オプション設定
-   * @param {IEventEmitter} eventEmitter イベントエミッター
+   * @param {IEventBus} eventEmitter イベントエミッター
    * @param {ILogger} logger ロガー
    */
   constructor(options = {}, eventEmitter, logger) {
@@ -27,20 +26,13 @@ export class DeviceListViewModel {
     };
 
     // インターフェースを介した依存（依存性逆転の原則を適用）
-    // EventBusをデフォルトとして使用（後方互換性のため）
-    this.eventEmitter = eventEmitter || (typeof EventBus !== 'undefined' ? EventBus : null);
+    this.eventEmitter = eventEmitter;
     this.logger = logger || {
       debug: () => {},
       info: () => {},
       warn: () => {},
       error: () => {}
     };
-
-    // EventBusが利用可能だが、eventEmitterがない場合
-    if (!this.eventEmitter && typeof EventBus !== 'undefined') {
-      this.logger.debug('EventEmitter not provided, using EventBus as fallback');
-      this.eventEmitter = EventBus;
-    }
 
     // コンテナ要素の参照
     this.containerElement = null;
@@ -56,7 +48,7 @@ export class DeviceListViewModel {
     };
 
     // 再生モードのイベントリスナーを設定
-    EventBus.on('playbackModeChanged', (event) => {
+    this.eventEmitter.on('playbackModeChanged', (event) => {
       this.isPlaybackMode = event.isPlaybackMode;
       this.logger.debug(`再生モード変更: ${this.isPlaybackMode ? 'ON' : 'OFF'}`);
 
@@ -84,7 +76,6 @@ export class DeviceListViewModel {
       this.eventEmitter.emit(eventType, data);
     } else {
       this.logger.warn(`eventEmitter not available for event: ${eventType}`);
-      EventBus.emit(eventType, data);
     }
   }
 

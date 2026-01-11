@@ -26,6 +26,10 @@ export class LogManagerComponent {
     this.isProcessingClick = false;
     this._updatingUIState = false;
 
+    // 再生モード用のデバイス設定保存（グローバル変数からクラスプロパティに移動）
+    this.originalDeviceSettings = null;
+    this.replayDevices = null;
+
     this.elements = {
       logManager: null,
       showLogReplayBtn: null,
@@ -754,8 +758,8 @@ export class LogManagerComponent {
       // デバイス一覧を更新
       if (devices.length > 0) {
         // 元のデバイス設定を保存
-        window.originalDeviceSettings = await this.appController.getAllDevices(true);
-        window.replayDevices = devices;
+        this.originalDeviceSettings = await this.appController.getAllDevices(true);
+        this.replayDevices = devices;
 
         // デバイス設定UIを更新
         this._updateDeviceSettings(devices, true);
@@ -846,9 +850,9 @@ export class LogManagerComponent {
       }
 
       // 再生デバイスデータ参照のクリア
-      const wasReplayMode = window.replayDevices !== undefined;
+      const wasReplayMode = this.replayDevices !== undefined;
       this.logger.debug(`再生モード状態: ${wasReplayMode}`);
-      window.replayDevices = null;
+      this.replayDevices = null;
 
       // デバイス一覧の表示を維持（フレックス表示を明示的に設定）
       const deviceInputsContainer = document.getElementById('device-inputs');
@@ -863,10 +867,10 @@ export class LogManagerComponent {
       // 元のデバイス設定に戻す
       this.logger.debug('デバイス設定を元に戻します');
       try {
-        if (window.originalDeviceSettings) {
+        if (this.originalDeviceSettings) {
           this.logger.debug('保存されていた元のデバイス設定を使用します');
-          await this._updateDeviceSettings(window.originalDeviceSettings, false);
-          window.originalDeviceSettings = null;
+          await this._updateDeviceSettings(this.originalDeviceSettings, false);
+          this.originalDeviceSettings = null;
         } else {
           this.logger.debug('現在の接続デバイス情報を取得して設定します');
           const currentDevices = await this.appController.getAllDevices(true);

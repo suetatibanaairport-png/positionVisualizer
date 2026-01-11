@@ -5,6 +5,7 @@
  */
 
 import { DeviceValueUpdatedEvent } from '../../domain/events/DeviceEvents.js';
+import { ValueCalculator } from '../../domain/services/ValueCalculator.js';
 // 注: IEventBus, ILogger はドメイン層のインターフェース
 // 実装はAppBootstrapで注入される
 
@@ -220,7 +221,7 @@ export class MonitorValuesUseCase {
     if (prevNormalized === null || currNormalized === null) return true;
 
     // 変化量がしきい値を超えるか確認
-    return Math.abs(currNormalized - prevNormalized) >= this.options.valueChangeThreshold;
+    return ValueCalculator.shouldTriggerEvent(prevNormalized, currNormalized, this.options.valueChangeThreshold);
   }
 
   /**
@@ -240,7 +241,10 @@ export class MonitorValuesUseCase {
     let changeRate = 0;
 
     if (previousValue.normalizedValue !== null && currentValue.normalizedValue !== null) {
-      changeRate = Math.abs(currentValue.normalizedValue - previousValue.normalizedValue) / 100;
+      changeRate = ValueCalculator.calculateChangeRate(
+        previousValue.normalizedValue,
+        currentValue.normalizedValue
+      );
     }
 
     // 変化率に基づいて新しい間隔を計算

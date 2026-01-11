@@ -5,8 +5,6 @@
  * 元の実装（meterRenderer.js）と同様の扇状メーター表示を行う
  */
 
-import { AppLogger } from '../../infrastructure/services/Logger.js';
-
 /**
  * メーターレンダラークラス
  */
@@ -15,8 +13,9 @@ export class MeterRenderer {
    * レンダラーのコンストラクタ
    * @param {HTMLElement} container コンテナ要素
    * @param {Object} options オプション設定
+   * @param {Object} logger ロガー
    */
-  constructor(container, options = {}) {
+  constructor(container, options = {}, logger = null) {
     this.container = container;
     this.svgNamespace = 'http://www.w3.org/2000/svg';
     this.svg = null;
@@ -47,7 +46,7 @@ export class MeterRenderer {
     this.mutationObserver = null;
 
     // ロガー
-    this.logger = AppLogger.createLogger('MeterRenderer');
+    this.logger = logger || { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} };
 
     // 初期化
     this._initialize();

@@ -7,6 +7,8 @@
  * Infrastructure層がこのインターフェースを実装する。
  */
 
+import { EventTypes } from '../events/EventTypes.js';
+
 /**
  * イベントバスのインターフェース
  * @interface
@@ -58,5 +60,14 @@ export class IEventBus {
    */
   removeListenersByOwner(owner) {
     throw new Error('Not implemented: IEventBus.removeListenersByOwner()');
+  }
+
+  /**
+   * イベント名を正規化
+   * @param {string} eventName イベント名
+   * @returns {string} 正規化されたイベント名
+   */
+  static normalizeEventName(eventName) {
+    return EventTypes[eventName] || eventName;
   }
 }

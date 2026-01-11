@@ -59,5 +59,3 @@ export const EventTypes = {
   RESPONSE_ALL_DEVICES: 'response:devices:all',
   RESPONSE_DEVICE_INFO: 'response:device:info'
 };
-
-export default EventTypes;
