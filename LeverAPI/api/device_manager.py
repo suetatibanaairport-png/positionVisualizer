@@ -7,7 +7,7 @@
 レバーデバイスとの通信と状態管理を行います。
 """
 
-import requests
+import httpx
 import logging
 import time
 from datetime import datetime
@@ -40,6 +40,15 @@ class DeviceManager:
         # キャッシュクリーンアップ用のタイマー設定
         self.last_cleanup = time.time()
         self.cleanup_interval = 60.0  # 60秒ごとにクリーンアップ
+
+        # HTTP Client（コネクションプーリング用）
+        self.http_client = httpx.Client(
+            timeout=httpx.Timeout(1.0, connect=0.5),
+            headers={
+                'Connection': 'keep-alive',
+                'Accept': 'application/json'
+            }
+        )
 
     def get_device_value(self, device_id, use_cache=True):
         """
@@ -93,8 +102,9 @@ class DeviceManager:
         try:
             # デバイスのAPIエンドポイントにリクエスト（タイムアウト設定の最適化）
             url = f"http://{device_info['ip']}/api"
-            # connect timeout=1秒、read timeout=1.5秒で設定
-            response = requests.get(url, timeout=(1.0, 1.5))
+            # HTTP Clientを使用（Keep-Alive接続を再利用）
+            # connect timeout=0.5秒、read timeout=1.0秒で設定（WiFi環境の安定性を重視）
+            response = self.http_client.get(url)
 
             if response.status_code == 200:
                 data = response.json()
@@ -133,7 +143,7 @@ class DeviceManager:
 
                     return transformed_data
 
-        except requests.RequestException as e:
+        except httpx.HTTPError as e:
             logger.warning(f"デバイスとの通信エラー: {device_id} - {e}")
             # 通信エラーの場合、必要に応じて古いデータを使用可能（オプション）
             if device_id in self.device_values:

@@ -166,6 +166,31 @@
             </div>
         </div>
 
+        <!-- 応答性設定セクション -->
+        <div class="range-settings-section">
+            <h3>応答性設定</h3>
+            <div class="range-grid">
+                <div class="device-group">
+                    <label>トランジション時間</label>
+                    <input type="range" id="transition-time" min="0.01" max="0.2" step="0.01" value="0.05">
+                    <span id="transition-time-value">0.05秒</span>
+                    <span class="input-description">アニメーションの滑らかさ（小さいほど即応的）</span>
+                </div>
+                <div class="device-group">
+                    <label>平滑化係数</label>
+                    <input type="range" id="smoothing-factor" min="0.5" max="1.0" step="0.01" value="0.95">
+                    <span id="smoothing-factor-value">0.95</span>
+                    <span class="input-description">値の平滑化強度（大きいほど即応的）</span>
+                </div>
+                <div class="device-group">
+                    <label>補間時間</label>
+                    <input type="range" id="interpolation-time" min="10" max="100" step="5" value="16">
+                    <span id="interpolation-time-value">16ms</span>
+                    <span class="input-description">値の補間時間（小さいほど即応的）</span>
+                </div>
+            </div>
+        </div>
+
         <!-- ログ管理セクション - LogManagerComponentで管理 -->
         <div class="log-sections">
             <!-- 新しいログ管理コンポーネント用のコンテナ -->

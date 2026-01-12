@@ -227,7 +227,20 @@ const server = http.createServer((req, res) => {
   res.end('OK');
 });
 
-const wss = new WebSocketServer({ server });
+// WebSocketServerの作成（圧縮を有効化してパフォーマンスを最適化）
+const wss = new WebSocketServer({
+  server,
+  // perMessageDeflate圧縮を有効化（帯域幅を20-40%削減）
+  perMessageDeflate: {
+    // zlibの圧縮レベル（0-9）
+    // レベル3: 圧縮速度とサイズのバランスが最適
+    zlibDeflateOptions: {
+      level: 3 // 0=圧縮なし, 9=最高圧縮（遅い）
+    },
+    // 128バイト未満のメッセージは圧縮しない（オーバーヘッド削減）
+    threshold: 128
+  }
+});
 
 function broadcast(obj, exclude) {
   const data = JSON.stringify(obj);

@@ -65,6 +65,24 @@ export class LogReplayUseCase {
       this.currentEntryIndex = 0;
       this.totalDuration = this._calculateTotalDuration();
 
+      // デバイスマッピングを保存または生成
+      if (session.deviceMapping) {
+        // メタデータにマッピングがある場合はそのまま使用
+        this.deviceMapping = session.deviceMapping;
+      } else {
+        // 後方互換性: メタデータがない場合はエントリから生成
+        this.deviceMapping = this._generateDeviceMappingFromEntries(this.entries);
+        this.logger.debug('メタデータにマッピングがないため、エントリから生成しました');
+      }
+
+      // マッピングを即座に発行（play()より前に設定を確定させる）
+      if (this.deviceMapping) {
+        this.eventBus.emit('replayDeviceMappingLoaded', {
+          deviceMapping: this.deviceMapping
+        });
+        this.logger.debug('デバイスマッピングをloadSession完了時に発行しました');
+      }
+
       this.logger.info(`Loaded session ${sessionId} with ${this.entries.length} entries`);
       return true;
     } catch (error) {
@@ -353,5 +371,30 @@ export class LogReplayUseCase {
     const firstEntryTime = this.entries[0].relativeTime;
     const lastEntryTime = this.entries[this.entries.length - 1].relativeTime;
     return lastEntryTime - firstEntryTime;
+  }
+
+  /**
+   * エントリからデバイスマッピングを生成（後方互換性用）
+   * ログに出現した順序でインデックスを割り当てる
+   * @param {Array} entries ログエントリ配列
+   * @returns {Object} deviceId → index のマッピング
+   * @private
+   */
+  _generateDeviceMappingFromEntries(entries) {
+    const mapping = {};
+    let nextIndex = 0;
+
+    // エントリをrelativeTime順でソート
+    const sortedEntries = [...entries].sort((a, b) => a.relativeTime - b.relativeTime);
+
+    for (const entry of sortedEntries) {
+      const deviceId = entry.deviceId;
+      if (deviceId && !(deviceId in mapping)) {
+        mapping[deviceId] = nextIndex;
+        nextIndex++;
+      }
+    }
+
+    return mapping;
   }
 }

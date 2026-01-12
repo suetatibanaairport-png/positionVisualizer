@@ -38,12 +38,19 @@ export class MeterRenderer {
     this.config = {
       iconSize: options.iconSize || 50,  // アイコンサイズ
       defaultIcon: options.defaultIcon || '/assets/icon.svg',  // デフォルトアイコン（ルートパスを使用）
+      collisionResolutionIterations: options.collisionResolutionIterations || 5,  // 衝突解決の最大反復回数
+      collisionSeparationForce: options.collisionSeparationForce || 0.6,  // 衝突時の分離力
+      collisionMaxMovement: options.collisionMaxMovement || 40,  // 元位置からの最大移動距離（px）
       ...options
     };
 
     // MutationObserver用の追跡データ
     this.lastValues = new Map();
     this.mutationObserver = null;
+
+    // DOM要素キャッシュ（パフォーマンス最適化）
+    // querySelectorAll()の繰り返し呼び出しを削減
+    this._deviceElements = new Map(); // index -> g element
 
     // ロガー
     this.logger = logger || { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} };
@@ -199,6 +206,122 @@ export class MeterRenderer {
     const y = cy + radius * Math.sin(angleRad);
 
     return { x, y };
+  }
+
+
+
+
+  /**
+   * 位置をメーター境界内にクランプ
+   * @param {number} x X座標
+   * @param {number} y Y座標
+   * @returns {Object} {x, y} クランプ後の座標
+   * @private
+   */
+  _clampToMeterBounds(x, y) {
+    const cx = this.baseCx + this.viewBox.offsetX;
+    const cy = this.baseCy + this.viewBox.offsetY;
+
+    // デカルト座標を極座標に変換
+    const dx = x - cx;
+    const dy = y - cy;
+    let radius = Math.sqrt(dx * dx + dy * dy);
+    let angle = Math.atan2(dy, dx) * (180 / Math.PI); // ラジアン→度
+
+    // 角度をメーター範囲にクランプ
+    angle = Math.max(this.startAngle, Math.min(this.endAngle, angle));
+
+    // 半径をメーター範囲にクランプ
+    const innerRadius = this.baseRadius - this.strokeWidth / 2;
+    const outerRadius = this.baseRadius + this.strokeWidth / 2;
+    radius = Math.max(innerRadius, Math.min(outerRadius, radius));
+
+    // 極座標をデカルト座標に戻す
+    const angleRad = angle * Math.PI / 180;
+    return {
+      x: cx + radius * Math.cos(angleRad),
+      y: cy + radius * Math.sin(angleRad)
+    };
+  }
+
+  /**
+   * アイコンの衝突を解決（反発力ベース）
+   * @param {Array} icons [{index, x, y, laneIndex, value}, ...]
+   * @param {number} iconRadius アイコンの半径（衝突判定用）
+   * @param {number} maxIterations 最大反復回数
+   * @returns {Map} index -> {x, y} の調整後位置マップ
+   * @private
+   */
+  _resolveIconCollisions(icons, iconRadius = 25, maxIterations = 5) {
+    if (icons.length <= 1) return new Map();
+
+    // 位置をコピー
+    const positions = icons.map(icon => ({
+      index: icon.index,
+      x: icon.x,
+      y: icon.y,
+      originalX: icon.x,
+      originalY: icon.y
+    }));
+
+    const minDistance = iconRadius * 2;
+    const separationForce = this.config.collisionSeparationForce;
+    const maxMovement = this.config.collisionMaxMovement;
+
+    for (let iter = 0; iter < maxIterations; iter++) {
+      let hasCollision = false;
+
+      for (let i = 0; i < positions.length; i++) {
+        for (let j = i + 1; j < positions.length; j++) {
+          const a = positions[i];
+          const b = positions[j];
+
+          const dx = b.x - a.x;
+          const dy = b.y - a.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+
+          if (distance < minDistance && distance > 0.001) {
+            hasCollision = true;
+
+            const nx = dx / distance;
+            const ny = dy / distance;
+            const overlap = minDistance - distance;
+            const moveAmount = (overlap / 2) * separationForce;
+
+            a.x -= nx * moveAmount;
+            a.y -= ny * moveAmount;
+            b.x += nx * moveAmount;
+            b.y += ny * moveAmount;
+          }
+        }
+      }
+
+      // 移動範囲を制限（各反復後）
+      positions.forEach(pos => {
+        const dx = pos.x - pos.originalX;
+        const dy = pos.y - pos.originalY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > maxMovement) {
+          const scale = maxMovement / dist;
+          pos.x = pos.originalX + dx * scale;
+          pos.y = pos.originalY + dy * scale;
+        }
+
+        // メーター境界内にクランプ
+        const clamped = this._clampToMeterBounds(pos.x, pos.y);
+        pos.x = clamped.x;
+        pos.y = clamped.y;
+      });
+
+      if (!hasCollision) break;
+    }
+
+    // 結果をMapで返す
+    const result = new Map();
+    positions.forEach(pos => {
+      result.set(pos.index, { x: pos.x, y: pos.y });
+    });
+    return result;
   }
 
   /**
@@ -435,11 +558,9 @@ export class MeterRenderer {
     // 状態がない場合はスキップ
     if (!viewModelState) return;
 
-    // 既存のアイコンを管理
-    const existing = new Map();
-    this.svg.querySelectorAll('g[data-perf]').forEach(g => {
-      existing.set(g.getAttribute('data-perf'), g);
-    });
+    // 既存のアイコンを管理（DOM要素キャッシュを使用してパフォーマンス改善）
+    // querySelectorAll()を毎回呼ぶ代わりに、キャッシュされたMapを使用
+    const existing = new Map(this._deviceElements);
 
     // viewModelStateが完全な形式であるかチェック
     const hasTempDisconnected = viewModelState &&
@@ -465,6 +586,87 @@ export class MeterRenderer {
       this.logger.debug('Initialized device values cache map');
     }
 
+    // ステップ1: 全デバイスの情報を収集（衝突検出のため）
+    const deviceInfos = [];
+    connectedIndices.forEach((index, laneIndex) => {
+      const isConnected = viewModelState.connected[index];
+      const isTempDisconnected = hasTempDisconnected && viewModelState.tempDisconnected[index];
+      const isVisible = Array.isArray(viewModelState.visible) && viewModelState.visible[index] !== false;
+
+      // 表示対象のデバイスのみ収集
+      if ((isConnected || isTempDisconnected) && isVisible) {
+        let val = viewModelState.values[index];
+
+        // nullの場合はキャッシュから取得
+        if (val === null || val === undefined) {
+          if (this._lastDeviceValues.has(index)) {
+            val = this._lastDeviceValues.get(index);
+          } else {
+            val = 0;
+          }
+        }
+
+        const numericVal = Number(val);
+        const safeVal = Number.isFinite(numericVal) ? numericVal : 0;
+
+        deviceInfos.push({ index, value: safeVal, laneIndex });
+      }
+    });
+
+    // ステップ2: 全デバイスの初期位置を計算
+    const iconPositions = [];
+    const deviceData = new Map(); // index -> {actualVal, laneIndex, safeVal} を保存
+
+    viewModelState.values.forEach((val, index) => {
+      const isConnected = viewModelState.connected[index];
+      const isTempDisconnected = hasTempDisconnected && viewModelState.tempDisconnected[index];
+      const isVisible = Array.isArray(viewModelState.visible) && viewModelState.visible[index] !== false;
+
+      if ((!isConnected && !isTempDisconnected) || !isVisible) {
+        return; // スキップ
+      }
+
+      // 値がnullの場合は最後の有効な値を使用
+      let actualVal;
+      if (val === null || val === undefined) {
+        if (this._lastDeviceValues.has(index)) {
+          actualVal = this._lastDeviceValues.get(index);
+        } else {
+          actualVal = 0;
+          this._lastDeviceValues.set(index, actualVal);
+        }
+      } else {
+        actualVal = val;
+        this._lastDeviceValues.set(index, val);
+      }
+
+      const laneIndex = connectedIndices.indexOf(index) >= 0 ? connectedIndices.indexOf(index) : 0;
+      const numericVal = Number(actualVal);
+      const safeVal = Number.isFinite(numericVal) ? numericVal : 0;
+
+      // 位置を計算
+      const pos = this._calculateIconPosition(safeVal, laneIndex, deviceCount);
+
+      // 位置とデータを保存
+      iconPositions.push({
+        index,
+        x: pos.x,
+        y: pos.y,
+        laneIndex,
+        value: safeVal
+      });
+
+      deviceData.set(index, { actualVal, laneIndex, safeVal });
+    });
+
+    // ステップ3: 衝突を解決
+    const adjustedPositions = this._resolveIconCollisions(
+      iconPositions,
+      this.config.iconSize / 2,
+      this.config.collisionResolutionIterations
+    );
+
+    // ステップ4: 調整後の位置でアイコンを描画
     viewModelState.values.forEach((val, index) => {
       // デバイスが接続されていない、かつ一時的な切断状態でもない場合、または表示が非表示に設定されている場合はスキップ
       const isConnected = viewModelState.connected[index];
@@ -472,10 +674,11 @@ export class MeterRenderer {
       const isVisible = Array.isArray(viewModelState.visible) && viewModelState.visible[index] !== false;
 
       if ((!isConnected && !isTempDisconnected) || !isVisible) {
-        // 既存のアイコンがあれば削除
-        const existingG = this.svg.querySelector(`g[data-perf="${index}"]`);
+        // 既存のアイコンがあれば削除（キャッシュから取得）
+        const existingG = this._deviceElements.get(String(index));
         if (existingG) {
           existingG.remove();
+          this._deviceElements.delete(String(index)); // キャッシュからも削除
         }
         existing.delete(String(index));
         // 接続状態を維持する場合は値のキャッシュもそのまま保持し、完全な切断の場合のみクリア
@@ -485,46 +688,33 @@ export class MeterRenderer {
         return;
       }
 
-      // 値がnullの場合は最後の有効な値を使用（アイコンが消えるのを防ぐ）
-      let actualVal;
-      if (val === null || val === undefined) {
-        // 過去に有効な値があればそれを使用
-        if (this._lastDeviceValues.has(index)) {
-          actualVal = this._lastDeviceValues.get(index);
-          this.logger.debug(`Using cached value for device ${index}: ${actualVal}`);
-        } else {
-          // 過去の値もなければ0を使用
-          actualVal = 0;
-          this.logger.debug(`No cached value for device ${index}, using default: 0`);
-          // 初期値をキャッシュ
-          this._lastDeviceValues.set(index, actualVal);
-        }
-      } else {
-        // 有効な値を受け取ったら、その値をキャッシュして使用
-        actualVal = val;
-        this._lastDeviceValues.set(index, val);
+      // デバイスデータを取得（ステップ4で計算済み）
+      const data = deviceData.get(index);
+      if (!data) {
+        // データが存在しない場合はスキップ（非表示デバイス）
+        return;
       }
 
-      // このインデックスのレーンインデックスを計算
-      let laneIndex = connectedIndices.indexOf(index);
-      if (laneIndex < 0) laneIndex = 0;
+      const { actualVal, laneIndex, safeVal } = data;
 
-      // 数値への変換と安全な値の保証
-      const numericVal = Number(actualVal);
-      const safeVal = Number.isFinite(numericVal) ? numericVal : 0;
+      // 調整後の位置を取得（衝突解決済み）
+      const adjustedPos = adjustedPositions.get(index);
+      const pos = adjustedPos || {
+        // フォールバック: 調整位置がない場合は元の位置を計算
+        ...this._calculateIconPosition(safeVal, laneIndex, deviceCount)
+      };
 
-      // 値に問題があっても位置計算は必ず行う
-      // レーンのオフセットとデバイス数を考慮した位置計算
-      const pos = this._calculateIconPosition(safeVal, laneIndex, deviceCount);
-
-      // アイコン要素を取得または作成
-      let g = this.svg.querySelector(`g[data-perf="${index}"]`);
+      // アイコン要素を取得または作成（キャッシュから取得）
+      let g = this._deviceElements.get(String(index));
       if (!g) {
         // 新しいアイコン要素を作成
         g = document.createElementNS(this.svgNamespace, 'g');
         g.setAttribute('data-perf', String(index));
-        g.style.transition = 'transform 0.6s cubic-bezier(0.22, 1, 0.36, 1)';
+        g.style.transition = 'transform 0.05s ease-out';  // 50ms - 高速レスポンス
         g.style.willChange = 'transform';
+
+        // キャッシュに追加
+        this._deviceElements.set(String(index), g);
 
         // 背景画像（ユーザーアイコン）
         const bgImage = document.createElementNS(this.svgNamespace, 'image');
@@ -654,15 +844,18 @@ export class MeterRenderer {
         this._updateIconValue(g, safeVal, '%');
 
         // トランジションでトランスフォームのみを変更
-        g.style.transition = 'transform 0.6s cubic-bezier(0.22, 1, 0.36, 1)';
+        g.style.transition = 'transform 0.05s ease-out';  // 50ms - 高速レスポンス
         g.setAttribute('transform', `translate(${pos.x}, ${pos.y})`);
       }
 
       existing.delete(String(index));
     });
 
-    // 不要な要素を削除
-    existing.forEach((g) => g.remove());
+    // 不要な要素を削除（キャッシュからも削除）
+    existing.forEach((g, index) => {
+      g.remove();
+      this._deviceElements.delete(index); // キャッシュからも削除
+    });
 
     this.logger.debug('MeterRenderer updated');
   }
@@ -699,6 +892,9 @@ export class MeterRenderer {
       this.mutationObserver.disconnect();
       this.mutationObserver = null;
     }
+
+    // DOM要素キャッシュのクリア
+    this._deviceElements.clear();
 
     // SVG要素の削除
     if (this.container && this.svg) {

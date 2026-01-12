@@ -8,10 +8,6 @@ PedanticLeverController - テスト用UIサーバー
 本番環境では使用せず、動作確認用途のみに使用してください。
 """
 
-# eventlet monkey_patch()を最初に実行する
-import eventlet
-eventlet.monkey_patch()
-
 import os
 import sys
 import logging
@@ -40,7 +36,7 @@ app = Flask(__name__,
             template_folder='templates')
 
 # Socket.IOの初期化
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 # CORS等の設定はAPIサーバーが行うので省略
 
@@ -159,9 +155,9 @@ if __name__ == '__main__':
     # APIサーバーのSocket.IOに接続
     try:
         # 非同期で接続試行（APIサーバーが起動していない場合でもテストUIは起動する）
-        eventlet.spawn(connect_to_api_socketio)
+        socketio.start_background_task(connect_to_api_socketio)
     except Exception as e:
         logger.warning(f"APIサーバー接続試行エラー: {e}")
 
     # SocketIOサーバーとして起動
-    socketio.run(app, host='0.0.0.0', port=5005, debug=True)
+    socketio.run(app, host='0.0.0.0', port=5005, debug=True, allow_unsafe_werkzeug=True)

@@ -24,7 +24,11 @@ export class Settings {
 
     // 補間関連設定
     this.interpolationEnabled = options.interpolationEnabled !== undefined ? options.interpolationEnabled : true;
-    this.interpolationTimeMs = options.interpolationTimeMs || 200;
+    this.interpolationTimeMs = options.interpolationTimeMs || 16; // 16ms（1フレーム@60fps）
+
+    // 応答性関連設定（UI表示のレスポンス）
+    this.transitionTime = options.transitionTime || 0.05;        // CSSトランジション時間（秒）
+    this.smoothingFactor = options.smoothingFactor || 0.95;      // 平滑化係数 (0-1)
 
     // 更新関連設定
     this.pollingIntervalMs = options.pollingIntervalMs || 100;
@@ -122,6 +126,8 @@ export class Settings {
       theme: this.theme,
       interpolationEnabled: this.interpolationEnabled,
       interpolationTimeMs: this.interpolationTimeMs,
+      transitionTime: this.transitionTime,
+      smoothingFactor: this.smoothingFactor,
       pollingIntervalMs: this.pollingIntervalMs,
       loggingEnabled: this.loggingEnabled,
       logLevelVerbose: this.logLevelVerbose,

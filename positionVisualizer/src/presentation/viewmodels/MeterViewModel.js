@@ -22,9 +22,9 @@ export class MeterViewModel {
   constructor(options = {}, eventEmitter, logger) {
     this.options = {
       maxDevices: 6,                // 最大デバイス数
-      interpolationTime: 80,        // 値の補間時間（ミリ秒）- レスポンシブに
+      interpolationTime: 16,        // 値の補間時間（ミリ秒）- 1フレーム（60fps対応）
       enableSmoothing: true,        // 平滑化を有効化
-      smoothingFactor: 0.7,         // 平滑化係数 (0-1) - より即応性を高める
+      smoothingFactor: 0.95,        // 平滑化係数 (0-1) - ほぼ即時反映
       ...options
     };
 
@@ -126,6 +126,29 @@ export class MeterViewModel {
     this.eventEmitter.on('playbackCompleted', () => {
       this.logger.debug('再生完了イベントを受信しました');
       this.isPlaybackMode = false;
+    });
+
+    // オーバーレイ向け: BroadcastChannel経由で転送される playbackModeChanged イベントを処理
+    this.eventEmitter.on('playbackModeChanged', (event) => {
+      this.isPlaybackMode = event.isPlaybackMode;
+      this.logger.debug(`再生モード状態を同期: ${this.isPlaybackMode}`);
+    });
+
+    // 記録用: デバイスマッピングのリクエストに応答
+    this.eventEmitter.on('deviceMappingRequest', () => {
+      const mapping = {};
+      for (const [deviceId, index] of this.deviceMapping.entries()) {
+        mapping[deviceId] = index;
+      }
+      this.eventEmitter.emit('deviceMappingResponse', { mapping });
+    });
+
+    // 再生用: デバイスマッピングを設定
+    this.eventEmitter.on('replayDeviceMappingLoaded', (event) => {
+      if (event.deviceMapping) {
+        this._setReplayDeviceMapping(event.deviceMapping);
+        this.logger.debug('再生用デバイスマッピングを設定しました');
+      }
     });
 
     // 補間の更新ループ
@@ -610,6 +633,20 @@ export class MeterViewModel {
     this.logger.info(`Device removed from ViewModel: ${deviceId}`);
     this._notifyChange();
     return true;
+  }
+
+  /**
+   * 再生用デバイスマッピングを設定
+   * @param {Object} mapping デバイスID→インデックスのマッピング
+   */
+  _setReplayDeviceMapping(mapping) {
+    // 既存のマッピングをクリア
+    this.deviceMapping.clear();
+
+    // 新しいマッピングを設定
+    for (const [deviceId, index] of Object.entries(mapping)) {
+      this.deviceMapping.set(deviceId, Number(index));
+    }
   }
 
   /**

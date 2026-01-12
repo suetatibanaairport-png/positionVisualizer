@@ -45,9 +45,10 @@ export class RecordSessionUseCase {
   /**
    * 記録開始
    * @param {Object} initialValues 初期値（デバイスID => 値）
+   * @param {Object} deviceMapping デバイスマッピング（デバイスID => インデックス）
    * @returns {Promise<boolean>} 成功したかどうか
    */
-  async startRecording(initialValues = {}) {
+  async startRecording(initialValues = {}, deviceMapping = null) {
     this.logger.debug('記録開始リクエストを受信しました');
 
     if (this.isRecording) {
@@ -61,6 +62,7 @@ export class RecordSessionUseCase {
     this.isRecording = true;
     this.startTime = Date.now();
     this.entries = [];
+    this.deviceMapping = deviceMapping || {};
 
     this.logger.info(`記録セッションを開始します: ${sessionId}`);
 
@@ -85,7 +87,8 @@ export class RecordSessionUseCase {
           endTime: null,
           duration: 0,
           entryCount: this.entries.length,
-          entries: []
+          entries: [],
+          deviceMapping: this.deviceMapping
         }
       );
       this.logger.debug(`一時的なセッション情報を保存しました: ${sessionId}`);
@@ -161,7 +164,8 @@ export class RecordSessionUseCase {
             endTime,
             duration,
             entryCount: entries.length,
-            entries
+            entries,
+            deviceMapping: this.deviceMapping
           }
         );
 
