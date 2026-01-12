@@ -24,9 +24,9 @@
     "build:bridge:win": "bun build ./bridge-server.js --compile --target=bun-windows-x64 --outfile ../app/Windows/LeverBridge.exe",
     "build:bridge:mac": "bun build ./bridge-server.js --compile --target=bun-darwin-arm64 --outfile ../app/macOS/LeverBridge",
     "build:api": "run-script-os",
-    "build:api:win32": "cd ../LeverAPI && python -m PyInstaller --onefile --collect-submodules=dns --collect-submodules=eventlet --hidden-import=engineio.async_drivers.eventlet --hidden-import=api.discovery --hidden-import=api.device_manager --hidden-import=api.transformers --hidden-import=api.cache --name LeverAPI app.py && copy /Y dist\\LeverAPI.exe ..\\app\\Windows\\",
-    "build:api:darwin": "cd ../LeverAPI && python3 -m PyInstaller --onefile --collect-submodules=dns --collect-submodules=eventlet --hidden-import=engineio.async_drivers.eventlet --hidden-import=api.discovery --hidden-import=api.device_manager --hidden-import=api.transformers --hidden-import=api.cache --name LeverAPI app.py && cp dist/LeverAPI ../app/macOS/",
-    "build:api:linux": "cd ../LeverAPI && python3 -m PyInstaller --onefile --collect-submodules=dns --collect-submodules=eventlet --hidden-import=engineio.async_drivers.eventlet --hidden-import=api.discovery --hidden-import=api.device_manager --hidden-import=api.transformers --hidden-import=api.cache --name LeverAPI app.py && cp dist/LeverAPI ../app/macOS/"
+    "build:api:win32": "cd ../LeverAPI && python -m PyInstaller --onefile --collect-submodules=dns --hidden-import=engineio.async_drivers.threading --hidden-import=api.discovery --hidden-import=api.device_manager --hidden-import=api.transformers --hidden-import=api.cache --collect-all=orjson --name LeverAPI app.py && copy /Y dist\\LeverAPI.exe ..\\app\\Windows\\",
+    "build:api:darwin": "cd ../LeverAPI && python3 -m PyInstaller --onefile --collect-submodules=dns --hidden-import=engineio.async_drivers.threading --hidden-import=api.discovery --hidden-import=api.device_manager --hidden-import=api.transformers --hidden-import=api.cache --collect-all=orjson --name LeverAPI app.py && cp dist/LeverAPI ../app/macOS/",
+    "build:api:linux": "cd ../LeverAPI && python3 -m PyInstaller --onefile --collect-submodules=dns --hidden-import=engineio.async_drivers.threading --hidden-import=api.discovery --hidden-import=api.device_manager --hidden-import=api.transformers --hidden-import=api.cache --collect-all=orjson --name LeverAPI app.py && cp dist/LeverAPI ../app/macOS/"
   },
   "repository": {
     "type": "git",

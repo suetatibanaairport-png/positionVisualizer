@@ -1,16 +1,20 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_all
 
-hiddenimports = ['engineio.async_drivers.eventlet', 'api.discovery', 'api.device_manager', 'api.transformers', 'api.cache']
+datas = []
+binaries = []
+hiddenimports = ['engineio.async_drivers.threading', 'api.discovery', 'api.device_manager', 'api.transformers', 'api.cache']
 hiddenimports += collect_submodules('dns')
-hiddenimports += collect_submodules('eventlet')
+tmp_ret = collect_all('orjson')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 
 a = Analysis(
     ['app.py'],
     pathex=[],
-    binaries=[],
-    datas=[],
+    binaries=binaries,
+    datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},

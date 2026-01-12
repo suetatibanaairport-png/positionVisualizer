@@ -61,8 +61,22 @@ export class SessionManager {
       }
     }
 
-    // 記録開始
-    const success = await this.recordSessionUseCase.startRecording(initialValues);
+    // デバイスマッピングを取得（EventBus経由でリクエスト）
+    let deviceMapping = {};
+    const mappingPromise = new Promise((resolve) => {
+      const handler = (event) => {
+        resolve(event.mapping);
+        this.eventBus.off('deviceMappingResponse', handler);
+      };
+      this.eventBus.on('deviceMappingResponse', handler);
+      this.eventBus.emit('deviceMappingRequest', {});
+      // タイムアウト（100ms）
+      setTimeout(() => resolve({}), 100);
+    });
+    deviceMapping = await mappingPromise;
+
+    // 記録開始（deviceMappingを追加）
+    const success = await this.recordSessionUseCase.startRecording(initialValues, deviceMapping);
 
     if (success) {
       this.recordingEnabled = true;

@@ -188,6 +188,56 @@ function setupUIEvents(app) {
     });
   }
 
+  // 応答性設定のイベントリスナー
+  // トランジション時間
+  const transitionTimeInput = document.getElementById('transition-time');
+  const transitionTimeValue = document.getElementById('transition-time-value');
+  if (transitionTimeInput && transitionTimeValue) {
+    transitionTimeInput.addEventListener('input', (e) => {
+      const value = parseFloat(e.target.value);
+      transitionTimeValue.textContent = `${value.toFixed(2)}秒`;
+      // 設定を更新（MeterRendererに反映）
+      if (app && app.meterViewModel) {
+        app.meterViewModel.options.transitionTime = value;
+        // MeterRendererを再初期化して設定を反映
+        if (app.meterRenderer) {
+          app.meterRenderer.config.transitionTime = value;
+        }
+      }
+      logger.debug(`トランジション時間を ${value}秒 に変更`);
+    });
+  }
+
+  // 平滑化係数
+  const smoothingFactorInput = document.getElementById('smoothing-factor');
+  const smoothingFactorValue = document.getElementById('smoothing-factor-value');
+  if (smoothingFactorInput && smoothingFactorValue) {
+    smoothingFactorInput.addEventListener('input', (e) => {
+      const value = parseFloat(e.target.value);
+      smoothingFactorValue.textContent = value.toFixed(2);
+      // 設定を更新（MeterViewModelに反映）
+      if (app && app.meterViewModel) {
+        app.meterViewModel.options.smoothingFactor = value;
+      }
+      logger.debug(`平滑化係数を ${value} に変更`);
+    });
+  }
+
+  // 補間時間
+  const interpolationTimeInput = document.getElementById('interpolation-time');
+  const interpolationTimeValue = document.getElementById('interpolation-time-value');
+  if (interpolationTimeInput && interpolationTimeValue) {
+    interpolationTimeInput.addEventListener('input', (e) => {
+      const value = parseInt(e.target.value, 10);
+      interpolationTimeValue.textContent = `${value}ms`;
+      // 設定を更新（MeterViewModelに反映）
+      if (app && app.meterViewModel) {
+        app.meterViewModel.options.interpolationTime = value;
+      }
+      logger.debug(`補間時間を ${value}ms に変更`);
+    });
+  }
+
   // 注意: デバイスイベント（接続/切断/リセット/表示変更/名前変更/アイコン変更）は
   // AppControllerが処理するため、ここでの登録は不要
 }

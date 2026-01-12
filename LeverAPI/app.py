@@ -17,14 +17,13 @@ import time
 import socket
 import logging
 import threading
-import eventlet
-eventlet.monkey_patch()  # 非同期I/Oのパッチ適用（WebSocketのパフォーマンス向上のため）
 
-from flask import Flask, jsonify, request, render_template, send_from_directory
+from flask import Flask, jsonify, request, render_template, send_from_directory, Response
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 import requests
 from datetime import datetime, timedelta
+import orjson
 
 # 内部モジュールのインポート
 from api.discovery import LeverDiscovery
@@ -38,22 +37,26 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# httpxとwerkzeugの正常系ログを抑制（エラーログのみ表示）
+logging.getLogger('httpx').setLevel(logging.WARNING)
+logging.getLogger('werkzeug').setLevel(logging.WARNING)
+
 # アプリケーション設定
 app = Flask(__name__)
 CORS(app)  # クロスオリジンリクエストを許可
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')  # WebSocket初期化
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')  # WebSocket初期化
 
 # シミュレーションモード設定
 SIMULATION_MODE = False
 SIMULATION_DEVICE_COUNT = 3  # シミュレーションデバイスのデフォルト数
 
 # WebSocketリアルタイムデータ更新設定
-UPDATE_INTERVAL = 0.1  # 100ミリ秒ごとに更新（WebSocket通知用）
+UPDATE_INTERVAL = 0.033  # 約33ミリ秒ごとに更新（WebSocket通知用） - 30Hz
 LAST_DEVICE_VALUES = {}  # 前回のデバイス値を格納（変更検出用）
 NOTIFICATION_THRESHOLDS = {
-    'value_change': 2.0,  # 値の変化が2以上の場合に通知
-    'time_threshold': 1.0,  # 最後の通知から1秒以上経過した場合は小さな変化でも通知
-    'force_interval': 2.0,  # 最後の通知から2秒以上経過した場合は変化がなくても通知
+    'value_change': 0.1,  # 値の変化が0.1以上の場合に通知（ほぼ全ての変化を通知）
+    'time_threshold': 0.01,  # 最後の通知から10ms以上経過した場合は小さな変化でも通知
+    'force_interval': 0.5,  # 最後の通知から0.5秒以上経過した場合は変化がなくても通知
 }
 LAST_NOTIFICATION_TIMES = {}  # デバイスごとの最後の通知時間
 LAST_KNOWN_DEVICE_IDS = set()  # 前回のデバイスIDセット（接続/切断検出用）
@@ -67,6 +70,8 @@ device_manager = DeviceManager(discovery)
 def create_error_response(code, message, details=None):
     """
     一貫したフォーマットでエラーレスポンスを作成
+
+    orjsonを使用して高速なJSON生成を実現
 
     Args:
         code (int): HTTPエラーコード
@@ -85,11 +90,16 @@ def create_error_response(code, message, details=None):
     if details:
         response["details"] = details
 
-    return jsonify(response), code
+    return Response(
+        orjson.dumps(response),
+        mimetype='application/json'
+    ), code
 
 def create_success_response(data, meta=None):
     """
     一貫したフォーマットで成功レスポンスを作成
+
+    orjsonを使用して高速なJSON生成を実現
 
     Args:
         data (dict/list): レスポンスデータ
@@ -106,7 +116,10 @@ def create_success_response(data, meta=None):
     if meta:
         response["meta"] = meta
 
-    return jsonify(response)
+    return Response(
+        orjson.dumps(response),
+        mimetype='application/json'
+    )
 
 # API v1 エンドポイント (BFF用)
 
@@ -814,11 +827,18 @@ def initialize_app():
     # アプリケーション起動時間を記録
     app.start_time = time.time()
 
+    # 設定値をログ出力（デバッグ用）
+    logger.info(f"========================================")
+    logger.info(f"LeverAPI 起動設定:")
+    logger.info(f"  UPDATE_INTERVAL = {UPDATE_INTERVAL} 秒 ({1/UPDATE_INTERVAL:.1f}Hz)")
+    logger.info(f"  予想リクエスト頻度: {1/UPDATE_INTERVAL:.1f} req/sec/device")
+    logger.info(f"========================================")
+
     # 別スレッドで初期スキャンを実行
     threading.Thread(target=lambda: discovery.discover_devices()).start()
 
     # リアルタイム監視タスクをバックグラウンドで開始
-    eventlet.spawn(realtime_monitor)
+    socketio.start_background_task(realtime_monitor)
 
 # エラーハンドラ
 @app.errorhandler(404)
@@ -898,11 +918,12 @@ def realtime_monitor():
     短い間隔（100ms）で実行され、値の変化を即座に検出する
     """
     global LAST_KNOWN_DEVICE_IDS, LAST_DEVICE_VALUES, LAST_NOTIFICATION_TIMES
-    
+
     logger.info("リアルタイム監視タスク開始")
 
     # 一括通知用の変数
-    batch_interval = 0.5  # 一括通知間隔（秒）
+    batch_interval = 0.033  # 一括通知間隔（秒） - 約33ms (30Hz)
+    logger.info(f"  batch_interval = {batch_interval} 秒 ({1/batch_interval:.1f}Hz)")
     last_batch_time = time.time()
     pending_updates = {}  # 通知待ちの更新 {device_id: value_data}
 
@@ -992,8 +1013,18 @@ def realtime_monitor():
                     # 通知時間と値を更新
                     LAST_DEVICE_VALUES[device_id] = value_data.copy()
                     LAST_NOTIFICATION_TIMES[device_id] = current_time
-                    # バッチ通知用にバッファに追加
-                    pending_updates[device_id] = value_data
+
+                    # アイドル後の最初の変化は即時通知（バッチを待たない）
+                    # 100ms以上経過していたら即時通知でレスポンス改善
+                    if time_since_last_notification >= 0.1:
+                        socketio.emit('device_update', {
+                            'device_id': device_id,
+                            'data': value_data
+                        })
+                        logger.debug(f"デバイス {device_id} の変化を即時通知（アイドル後）: {value_data['value']}")
+                    else:
+                        # 通常はバッチ通知用にバッファに追加
+                        pending_updates[device_id] = value_data
                 else:
                     # 値は常に更新（次回の変化検出のため）
                     LAST_DEVICE_VALUES[device_id] = value_data.copy()
@@ -1069,11 +1100,11 @@ def realtime_monitor():
                 last_batch_time = current_time
 
             # 短い間隔で監視（100ms）
-            eventlet.sleep(UPDATE_INTERVAL)
+            socketio.sleep(UPDATE_INTERVAL)
 
         except Exception as e:
             logger.error(f"リアルタイム監視エラー: {e}")
-            eventlet.sleep(1)  # エラー時は少し長めに待機
+            socketio.sleep(1)  # エラー時は少し長めに待機
 
 # メイン実行
 if __name__ == '__main__':
@@ -1089,4 +1120,4 @@ if __name__ == '__main__':
     # WebSocketサーバーとして起動
     # PyInstallerでコンパイルされた場合はデバッグモードを無効化
     is_frozen = getattr(sys, 'frozen', False)
-    socketio.run(app, host='0.0.0.0', port=5001, debug=(not is_frozen))
+    socketio.run(app, host='0.0.0.0', port=5001, debug=(not is_frozen), allow_unsafe_werkzeug=True)
