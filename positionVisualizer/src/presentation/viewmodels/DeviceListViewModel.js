@@ -4,10 +4,9 @@
  * UIの状態を管理し、アプリケーション層とプレゼンテーション層の橋渡しをする
  */
 
-import { IEventEmitter } from '../services/IEventEmitter.js';
-import { ILogger } from '../services/ILogger.js';
+import { IEventBus } from '../../domain/services/IEventBus.js';
+import { ILogger } from '../../domain/services/ILogger.js';
 import { EventTypes } from '../../domain/events/EventTypes.js';
-import { EventBus } from '../../infrastructure/services/EventBus.js';
 
 /**
  * デバイスリストのビューモデルクラス
@@ -16,7 +15,7 @@ export class DeviceListViewModel {
   /**
    * デバイスリストのビューモデルを初期化
    * @param {Object} options オプション設定
-   * @param {IEventEmitter} eventEmitter イベントエミッター
+   * @param {IEventBus} eventEmitter イベントエミッター
    * @param {ILogger} logger ロガー
    */
   constructor(options = {}, eventEmitter, logger) {
@@ -27,20 +26,13 @@ export class DeviceListViewModel {
     };
 
     // インターフェースを介した依存（依存性逆転の原則を適用）
-    // EventBusをデフォルトとして使用（後方互換性のため）
-    this.eventEmitter = eventEmitter || (typeof EventBus !== 'undefined' ? EventBus : null);
+    this.eventEmitter = eventEmitter;
     this.logger = logger || {
       debug: () => {},
       info: () => {},
       warn: () => {},
       error: () => {}
     };
-
-    // EventBusが利用可能だが、eventEmitterがない場合
-    if (!this.eventEmitter && typeof EventBus !== 'undefined') {
-      this.logger.debug('EventEmitter not provided, using EventBus as fallback');
-      this.eventEmitter = EventBus;
-    }
 
     // コンテナ要素の参照
     this.containerElement = null;
@@ -56,7 +48,7 @@ export class DeviceListViewModel {
     };
 
     // 再生モードのイベントリスナーを設定
-    EventBus.on('playbackModeChanged', (event) => {
+    this.eventEmitter.on('playbackModeChanged', (event) => {
       this.isPlaybackMode = event.isPlaybackMode;
       this.logger.debug(`再生モード変更: ${this.isPlaybackMode ? 'ON' : 'OFF'}`);
 
@@ -71,6 +63,20 @@ export class DeviceListViewModel {
     });
 
     this.logger.debug('DeviceListViewModel initialized');
+  }
+
+  /**
+   * イベントを安全に発行
+   * @param {string} eventType イベントタイプ
+   * @param {Object} data イベントデータ
+   * @private
+   */
+  _emitEvent(eventType, data) {
+    if (this.eventEmitter) {
+      this.eventEmitter.emit(eventType, data);
+    } else {
+      this.logger.warn(`eventEmitter not available for event: ${eventType}`);
+    }
   }
 
   /**
@@ -110,8 +116,8 @@ export class DeviceListViewModel {
       this._updateDeviceTemporaryDisabled();
     }
 
-    // 表示対象デバイスのフィルタリング
-    const visibleDevices = devices.filter(device => device.visible !== false);
+    // 設定パネルではすべてのデバイスを表示（非表示デバイスもトグルで管理できるように）
+    const visibleDevices = devices;
 
     if (visibleDevices.length === 0) {
       this.logger.debug('表示するデバイスがありません');
@@ -214,7 +220,7 @@ export class DeviceListViewModel {
   _createDeviceElement(device, isReplayMode, isDisabled = false) {
     const deviceId = device.id;
 
-    // デバイスグループ要素
+    // デバイスグループ要素（フレックスコンテナ）
     const deviceGroup = document.createElement('div');
     deviceGroup.id = `device-group-${deviceId}`;
     deviceGroup.className = 'device-group';
@@ -235,82 +241,52 @@ export class DeviceListViewModel {
       deviceGroup.appendChild(disabledReason);
     }
 
-    // デバイス名ラベル
-    const nameLabel = document.createElement('div');
-    nameLabel.className = 'device-name';
-    nameLabel.textContent = device.name || deviceId;
-    nameLabel.title = device.name || deviceId;
-    deviceGroup.appendChild(nameLabel);
+    // 左カラム：デバイスアイコン画像（2行分の高さ）
+    const iconContainer = document.createElement('div');
+    iconContainer.className = 'device-icon-container';
+
+    // 背景画像（ユーザーアイコン）
+    const iconDisplay = document.createElement('img');
+    iconDisplay.className = 'device-icon-display';
+    iconDisplay.src = device.iconUrl || './assets/icon.svg';
+    iconDisplay.onerror = () => {
+      iconDisplay.src = './assets/icon.svg';
+    };
+
+    // フォアグラウンド画像（icon.svg）
+    const iconOverlay = document.createElement('img');
+    iconOverlay.className = 'device-icon-overlay';
+    iconOverlay.src = './assets/icon.svg';
+
+    iconContainer.appendChild(iconDisplay);
+    iconContainer.appendChild(iconOverlay);
+    deviceGroup.appendChild(iconContainer);
+
+    // 右カラム：2行のコンテンツ
+    const contentColumn = document.createElement('div');
+    contentColumn.className = 'device-content-column';
+
+    // 1行目：デバイスID + ボタン群（右寄せ）
+    const topRow = document.createElement('div');
+    topRow.className = 'device-top-row';
 
     // デバイスIDコンテナ
     const deviceIdContainer = document.createElement('div');
     deviceIdContainer.className = 'device-id-container';
     deviceIdContainer.textContent = `ID: ${deviceId}`;
     deviceIdContainer.title = deviceId;
-    deviceGroup.appendChild(deviceIdContainer);
+    topRow.appendChild(deviceIdContainer);
 
-    // コントロール行
-    const controlRow = document.createElement('div');
-    controlRow.className = 'device-controls';
+    // ボタン群コンテナ（右寄せ）
+    const buttonGroup = document.createElement('div');
+    buttonGroup.className = 'device-button-group';
 
-    // 表示/非表示トグル
-    const visibilityToggle = document.createElement('label');
-    visibilityToggle.className = 'toggle-switch';
-    visibilityToggle.title = '表示/非表示';
-
-    const toggleInput = document.createElement('input');
-    toggleInput.type = 'checkbox';
-    toggleInput.checked = device.visible !== false;
-    toggleInput.addEventListener('change', () => {
-      this._handleVisibilityChange(deviceId, toggleInput.checked);
-    });
-
-    const toggleSpan = document.createElement('span');
-    toggleSpan.className = 'toggle-slider';
-
-    visibilityToggle.appendChild(toggleInput);
-    visibilityToggle.appendChild(toggleSpan);
-    controlRow.appendChild(visibilityToggle);
-
-    // デバイス名編集
-    const nameInput = document.createElement('input');
-    nameInput.type = 'text';
-    nameInput.className = 'device-name-input';
-    nameInput.value = device.name || deviceId;
-    nameInput.placeholder = 'デバイス名';
-    nameInput.addEventListener('change', () => {
-      this._handleNameChange(deviceId, nameInput.value);
-    });
-    controlRow.appendChild(nameInput);
-
-    // アイコン選択ボタン
-    const iconButtonContainer = document.createElement('div');
-    iconButtonContainer.className = 'icon-button-container';
-
+    // アイコン設定ボタン（1行目のボタン群に配置）
     const iconButton = document.createElement('button');
     iconButton.className = 'icon-button';
+    iconButton.textContent = 'アイコン設定';
     iconButton.title = 'アイコンを選択';
-
-    // アイコンまたはプレースホルダーを表示
-    const iconImg = document.createElement('img');
-    iconImg.className = 'device-icon-preview';
-    iconImg.src = device.iconUrl || './assets/icon.svg';
-    iconImg.onerror = () => {
-      iconImg.src = './assets/icon.svg';
-    };
-    iconButton.appendChild(iconImg);
-
-    // アイコンボタンのラベル
-    const iconButtonLabel = document.createElement('span');
-    iconButtonLabel.className = 'icon-button-label';
-    iconButtonLabel.textContent = 'アイコン';
-
-    // 再生モードの場合はクラスを追加
-    if (isReplayMode) {
-      iconButtonLabel.classList.add('replay-mode');
-    }
-
-    iconButton.appendChild(iconButtonLabel);
+    buttonGroup.appendChild(iconButton);
 
     // ファイル入力（隠す）
     const fileInput = document.createElement('input');
@@ -330,12 +306,116 @@ export class DeviceListViewModel {
     // ファイル選択時の処理
     fileInput.addEventListener('change', (event) => this._handleIconFileSelection(event));
 
-    iconButtonContainer.appendChild(iconButton);
-    iconButtonContainer.appendChild(fileInput);
-    controlRow.appendChild(iconButtonContainer);
+    // 削除ボタン（1行目のボタン群に配置）
+    const deleteButton = document.createElement('button');
+    deleteButton.className = 'device-delete-button';
+    deleteButton.title = 'デバイスを削除';
+    deleteButton.textContent = '🗑️';
+    deleteButton.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (confirm(`"${device.name || deviceId}" を削除しますか？`)) {
+        this._handleDeviceDelete(deviceId);
+      }
+    });
+    buttonGroup.appendChild(deleteButton);
 
-    // コントロール行をデバイスグループに追加
-    deviceGroup.appendChild(controlRow);
+    // ファイル入力をボタン群に追加
+    buttonGroup.appendChild(fileInput);
+
+    // 1行目を完成（ボタン群を追加）
+    topRow.appendChild(buttonGroup);
+    contentColumn.appendChild(topRow);
+
+    // 2行目：トグル + デバイス名編集コンテナ + 編集ボタン（右寄せ）
+    const bottomRow = document.createElement('div');
+    bottomRow.className = 'device-bottom-row';
+
+    // 左側コンテナ（トグル + デバイス名）
+    const leftContainer = document.createElement('div');
+    leftContainer.style.display = 'flex';
+    leftContainer.style.gap = '12px';
+    leftContainer.style.alignItems = 'center';
+    leftContainer.style.flex = '1';
+
+    // 表示/非表示トグル
+    const visibilityToggle = document.createElement('label');
+    visibilityToggle.className = 'toggle-switch';
+    visibilityToggle.title = '表示/非表示';
+
+    const toggleInput = document.createElement('input');
+    toggleInput.type = 'checkbox';
+    toggleInput.checked = device.visible !== false;
+    toggleInput.addEventListener('change', () => {
+      this._handleVisibilityChange(deviceId, toggleInput.checked);
+    });
+
+    const toggleSpan = document.createElement('span');
+    toggleSpan.className = 'toggle-slider';
+
+    visibilityToggle.appendChild(toggleInput);
+    visibilityToggle.appendChild(toggleSpan);
+    leftContainer.appendChild(visibilityToggle);
+
+    // デバイス名表示用のコンテナ
+    const nameEditContainer = document.createElement('div');
+    nameEditContainer.className = 'device-name-edit-container';
+
+    // デバイス名ラベル（通常表示）
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'device-name-text';
+    nameSpan.textContent = device.name || deviceId;
+
+    // 編集用入力（初期非表示）
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.className = 'device-name-input';
+    nameInput.value = device.name || deviceId;
+    nameInput.placeholder = 'デバイス名';
+    nameInput.style.display = 'none';
+
+    nameEditContainer.appendChild(nameSpan);
+    nameEditContainer.appendChild(nameInput);
+    leftContainer.appendChild(nameEditContainer);
+    bottomRow.appendChild(leftContainer);
+
+    // 編集ボタン（2行目の右寄せに配置）
+    const editButton = document.createElement('button');
+    editButton.className = 'device-name-edit-btn';
+    editButton.textContent = '✏️';
+    editButton.title = '名前を編集';
+    bottomRow.appendChild(editButton);
+
+    // 編集開始
+    editButton.addEventListener('click', () => {
+      nameSpan.style.display = 'none';
+      nameInput.style.display = 'block';
+      nameInput.value = nameSpan.textContent;
+      nameInput.focus();
+      nameInput.select();
+      deviceGroup.dataset.isEditing = 'true';
+    });
+
+    // 編集完了（blur）
+    nameInput.addEventListener('blur', () => {
+      this._finishEditing(deviceGroup, nameInput, nameSpan, editButton, deviceId);
+    });
+
+    // 編集完了（Enter）/ キャンセル（Escape）
+    nameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        nameInput.blur();
+      } else if (e.key === 'Escape') {
+        nameInput.value = nameSpan.textContent;
+        nameInput.blur();
+      }
+    });
+
+    // 2行目を完成
+    contentColumn.appendChild(bottomRow);
+
+    // 右カラムをデバイスグループに追加
+    deviceGroup.appendChild(contentColumn);
 
     return deviceGroup;
   }
@@ -351,33 +431,15 @@ export class DeviceListViewModel {
   _updateDeviceElement(deviceGroup, device, isReplayMode, isDisabled = false) {
     const deviceId = device.id;
 
-    // デバイス名を更新
-    const nameLabel = deviceGroup.querySelector('.device-name');
-    if (nameLabel) {
-      nameLabel.textContent = device.name || deviceId;
-      nameLabel.title = device.name || deviceId;
-    }
-
-    // 名前入力フィールドを更新
-    const nameInput = deviceGroup.querySelector('.device-name-input');
-    if (nameInput) {
-      nameInput.value = device.name || deviceId;
-    }
-
-    // デバイスIDコンテナを更新
-    const deviceIdContainer = deviceGroup.querySelector('.device-id-container');
-    if (!deviceIdContainer) {
-      // デバイスIDコンテナがなければ追加
-      const newDeviceIdContainer = document.createElement('div');
-      newDeviceIdContainer.className = 'device-id-container';
-      newDeviceIdContainer.textContent = `ID: ${deviceId}`;
-      newDeviceIdContainer.title = deviceId;
-      // nameLabel の後に挿入
-      const nameLabel = deviceGroup.querySelector('.device-name');
-      if (nameLabel && nameLabel.nextSibling) {
-        deviceGroup.insertBefore(newDeviceIdContainer, nameLabel.nextSibling);
-      } else {
-        deviceGroup.appendChild(newDeviceIdContainer);
+    // 編集中でなければ名前を更新
+    if (deviceGroup.dataset.isEditing !== 'true') {
+      const nameSpan = deviceGroup.querySelector('.device-name-text');
+      const nameInput = deviceGroup.querySelector('.device-name-input');
+      if (nameSpan) {
+        nameSpan.textContent = device.name || deviceId;
+      }
+      if (nameInput) {
+        nameInput.value = device.name || deviceId;
       }
     }
 
@@ -387,30 +449,18 @@ export class DeviceListViewModel {
       toggleInput.checked = device.visible !== false;
     }
 
-    // アイコンを更新（存在する場合）
-    if (device.iconUrl) {
-      const iconImg = deviceGroup.querySelector('.device-icon-preview');
-      if (iconImg) {
-        iconImg.src = device.iconUrl;
-        this.logger.debug(`デバイス一覧にアイコン設定: ${deviceId}, URL=${device.iconUrl}`);
-      }
-    } else {
-      this.logger.debug(`デバイス一覧のアイコンなし: ${deviceId}`);
+    // 左カラムのアイコン表示を更新
+    const iconDisplay = deviceGroup.querySelector('.device-icon-display');
+    if (iconDisplay && device.iconUrl) {
+      iconDisplay.src = device.iconUrl;
+      this.logger.debug(`デバイスアイコン更新: ${deviceId}, URL=${device.iconUrl}`);
     }
 
     // 再生モード関連のクラス設定
     if (isReplayMode) {
       deviceGroup.classList.add('replay-mode');
-      const iconButtonLabel = deviceGroup.querySelector('.icon-button-label');
-      if (iconButtonLabel) {
-        iconButtonLabel.classList.add('replay-mode');
-      }
     } else {
       deviceGroup.classList.remove('replay-mode');
-      const iconButtonLabel = deviceGroup.querySelector('.icon-button-label');
-      if (iconButtonLabel) {
-        iconButtonLabel.classList.remove('replay-mode');
-      }
     }
 
     // 無効化状態の更新
@@ -455,6 +505,28 @@ export class DeviceListViewModel {
   }
 
   /**
+   * デバイス名編集を完了
+   * @param {HTMLElement} deviceGroup デバイスグループ要素
+   * @param {HTMLInputElement} nameInput 名前入力要素
+   * @param {HTMLElement} nameSpan 名前表示要素
+   * @param {HTMLElement} editButton 編集ボタン要素
+   * @param {string} deviceId デバイスID
+   * @private
+   */
+  _finishEditing(deviceGroup, nameInput, nameSpan, editButton, deviceId) {
+    const newName = nameInput.value.trim();
+
+    nameInput.style.display = 'none';
+    nameSpan.style.display = 'inline';
+    deviceGroup.dataset.isEditing = 'false';
+
+    if (newName && newName !== nameSpan.textContent) {
+      nameSpan.textContent = newName;
+      this._handleNameChange(deviceId, newName);
+    }
+  }
+
+  /**
    * デバイスの一時的な無効化状態を更新
    * 再生モード中は接続中のデバイスを一時的に無効化
    * @private
@@ -484,12 +556,7 @@ export class DeviceListViewModel {
    * @private
    */
   _handleVisibilityChange(deviceId, isVisible) {
-    this.logger.debug(`[DEBUG TOGGLE] Toggle device visibility: ${deviceId} -> ${isVisible ? 'visible' : 'hidden'}`);
-
-    // deviceIdの型をチェック
-    this.logger.debug(`[DEBUG TOGGLE] deviceId type: ${typeof deviceId}, value: ${deviceId}`);
-    // isVisibleの型をチェック
-    this.logger.debug(`[DEBUG TOGGLE] isVisible type: ${typeof isVisible}, value: ${isVisible}`);
+    this.logger.debug(`Toggle device visibility: ${deviceId} -> ${isVisible ? 'visible' : 'hidden'}`);
 
     try {
       // トグル要素のUIを即時更新
@@ -497,29 +564,14 @@ export class DeviceListViewModel {
       if (deviceGroup) {
         const toggleInput = deviceGroup.querySelector('.toggle-switch input');
         if (toggleInput) {
-          this.logger.debug(`[DEBUG TOGGLE] Updating toggle input checked to: ${isVisible}`);
           toggleInput.checked = isVisible;
-        } else {
-          this.logger.warn(`[DEBUG TOGGLE] Toggle input element not found for device ${deviceId}`);
         }
-      } else {
-        this.logger.warn(`[DEBUG TOGGLE] Device group element not found for device ${deviceId}`);
       }
 
       // インターフェースを介してイベントを発火（新しい命名規則を使用）
-      if (this.eventEmitter) {
-        this.logger.debug(`[DEBUG TOGGLE] Emitting DEVICE_VISIBILITY_CHANGED event with deviceId: ${deviceId}, isVisible: ${isVisible}`);
-        this.eventEmitter.emit(EventTypes.DEVICE_VISIBILITY_CHANGED, { deviceId, isVisible });
-
-        // 後方互換性のために古いイベント名でも発行
-        this.eventEmitter.emit('deviceVisibilityChange', { deviceId, isVisible });
-
-        this.logger.debug(`[DEBUG TOGGLE] Visibility change events emitted for device ${deviceId}: ${isVisible ? 'visible' : 'hidden'}`);
-      } else {
-        this.logger.warn(`[DEBUG TOGGLE] eventEmitter not available for device ${deviceId}`);
-      }
+      this._emitEvent(EventTypes.DEVICE_VISIBILITY_CHANGED, { deviceId, isVisible });
     } catch (error) {
-      this.logger.error(`[DEBUG TOGGLE] Error in visibility toggle handler for device ${deviceId}:`, error);
+      this.logger.error(`Error in visibility toggle handler for device ${deviceId}:`, error);
     }
   }
 
@@ -533,12 +585,19 @@ export class DeviceListViewModel {
     this.logger.debug(`Change device name: ${deviceId} -> ${newName}`);
 
     // インターフェースを介してイベントを発火（新しい命名規則を使用）
-    if (this.eventEmitter) {
-      this.eventEmitter.emit(EventTypes.DEVICE_NAME_CHANGED, { deviceId, newName });
+    this._emitEvent(EventTypes.DEVICE_NAME_CHANGED, { deviceId, newName });
+  }
 
-      // 後方互換性のために古いイベント名でも発行
-      this.eventEmitter.emit('deviceNameChange', { deviceId, newName });
-    }
+  /**
+   * デバイス削除をハンドリング
+   * @param {string} deviceId デバイスID
+   * @private
+   */
+  _handleDeviceDelete(deviceId) {
+    this.logger.debug(`Delete device requested: ${deviceId}`);
+
+    // インターフェースを介してイベントを発火
+    this._emitEvent(EventTypes.COMMAND_REMOVE_DEVICE, { deviceId });
   }
 
   /**
@@ -571,41 +630,21 @@ export class DeviceListViewModel {
 
         if (size > 1024 * 1024) { // 1MB以上
           // イベントを発火して大きすぎることを通知（新しい命名規則を使用）
-          if (this.eventEmitter) {
-            this.eventEmitter.emit(EventTypes.DEVICE_ICON_ERROR, { deviceId, error: 'File size too large (over 1MB)' });
-
-            // 後方互換性のために古いイベント名でも発行
-            this.eventEmitter.emit('deviceIconError', { deviceId, error: 'File size too large (over 1MB)' });
-          }
+          this._emitEvent(EventTypes.DEVICE_ICON_ERROR, { deviceId, error: 'File size too large (over 1MB)' });
           return;
         }
 
         // アイコン設定イベントを発火（新しい命名規則を使用）
-        if (this.eventEmitter) {
-          this.eventEmitter.emit(EventTypes.DEVICE_ICON_CHANGED, { deviceId, iconUrl: dataUrl });
-
-          // 後方互換性のために古いイベント名でも発行
-          this.eventEmitter.emit('deviceIconChange', { deviceId, iconUrl: dataUrl });
-        }
+        this._emitEvent(EventTypes.DEVICE_ICON_CHANGED, { deviceId, iconUrl: dataUrl });
       } catch (error) {
         this.logger.error(`Error processing icon file for device ${deviceId}:`, error);
-        if (this.eventEmitter) {
-          this.eventEmitter.emit(EventTypes.DEVICE_ICON_ERROR, { deviceId, error: error.message });
-
-          // 後方互換性のために古いイベント名でも発行
-          this.eventEmitter.emit('deviceIconError', { deviceId, error: error.message });
-        }
+        this._emitEvent(EventTypes.DEVICE_ICON_ERROR, { deviceId, error: error.message });
       }
     };
 
     reader.onerror = () => {
       this.logger.error(`Error reading icon file for device ${deviceId}`);
-      if (this.eventEmitter) {
-        this.eventEmitter.emit(EventTypes.DEVICE_ICON_ERROR, { deviceId, error: 'File read error' });
-
-        // 後方互換性のために古いイベント名でも発行
-        this.eventEmitter.emit('deviceIconError', { deviceId, error: 'File read error' });
-      }
+      this._emitEvent(EventTypes.DEVICE_ICON_ERROR, { deviceId, error: 'File read error' });
     };
 
     // ファイルをデータURLとして読み込み

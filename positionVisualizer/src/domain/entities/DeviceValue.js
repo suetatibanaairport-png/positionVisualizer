@@ -4,6 +4,8 @@
  * 値のノーマライズや変換機能を持つ
  */
 
+import { ValueCalculator } from '../services/ValueCalculator.js';
+
 export class DeviceValue {
   /**
    * デバイス値コンストラクタ
@@ -29,14 +31,7 @@ export class DeviceValue {
    * @returns {number} 正規化された値（0-100）
    */
   static normalize(rawValue, minValue = 0, maxValue = 100) {
-    if (rawValue === null || rawValue === undefined) return null;
-
-    // 最小値と最大値が同じ場合（ゼロ除算防止）
-    if (minValue === maxValue) return 50;
-
-    // 0-100の範囲に正規化
-    const normalized = ((rawValue - minValue) / (maxValue - minValue)) * 100;
-    return Math.max(0, Math.min(100, normalized));
+    return ValueCalculator.normalize(rawValue, minValue, maxValue);
   }
 
   /**

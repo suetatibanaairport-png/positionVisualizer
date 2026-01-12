@@ -26,12 +26,13 @@ export class LogManagerComponent {
     this.isProcessingClick = false;
     this._updatingUIState = false;
 
+    // 再生モード用のデバイス設定保存（グローバル変数からクラスプロパティに移動）
+    this.originalDeviceSettings = null;
+    this.replayDevices = null;
+
     this.elements = {
       logManager: null,
       showLogReplayBtn: null,
-      // 旧ボタンは後方互換性のために残しておく
-      toggleRecordBtn: null,
-      // 新しく分離したボタン
       startRecordBtn: null,
       stopRecordBtn: null,
       recordStatusText: null,
@@ -45,9 +46,6 @@ export class LogManagerComponent {
     // イベントハンドラ
     this._onShowLogReplayClick = this._onShowLogReplayClick.bind(this);
     this._onCloseLogReplayClick = this._onCloseLogReplayClick.bind(this);
-    // 旧ボタン用のイベントハンドラ（後方互換性用）
-    this._onToggleRecordClick = this._onToggleRecordClick.bind(this);
-    // 新しく分離したボタン用のイベントハンドラ
     this._onStartRecordClick = this._onStartRecordClick.bind(this);
     this._onStopRecordClick = this._onStopRecordClick.bind(this);
     this._onFileSelected = this._onFileSelected.bind(this);
@@ -69,7 +67,6 @@ export class LogManagerComponent {
     // 既存のHTML構造がある場合は要素を取得
     this.elements.logManager = document.querySelector('.log-manager');
     this.elements.showLogReplayBtn = document.getElementById('show-log-replay');
-    this.elements.toggleRecordBtn = document.getElementById('toggle-record');
     this.elements.recordStatusText = document.getElementById('log-record-status');
 
     // IDまたはクラス名で取得（動的に生成されるコンポーネント）
@@ -131,14 +128,6 @@ export class LogManagerComponent {
     this.elements.stopRecordBtn.textContent = '記録停止';
     this.elements.stopRecordBtn.style.display = 'none'; // 初期状態では非表示
     buttonContainer.appendChild(this.elements.stopRecordBtn);
-
-    // 後方互換性のための旧ボタン（非表示）
-    this.elements.toggleRecordBtn = document.createElement('button');
-    this.elements.toggleRecordBtn.id = 'toggle-record';
-    this.elements.toggleRecordBtn.className = 'log-manager-button hidden-legacy-button';
-    this.elements.toggleRecordBtn.textContent = 'ログ記録';
-    this.elements.toggleRecordBtn.style.display = 'none'; // 非表示に設定
-    buttonContainer.appendChild(this.elements.toggleRecordBtn);
 
     this.elements.logManager.appendChild(buttonContainer);
 
@@ -241,19 +230,14 @@ export class LogManagerComponent {
       this.elements.stopRecordBtn.addEventListener('click', this._onStopRecordClick);
     }
 
-    // 後方互換性のための旧ボタン
-    if (this.elements.toggleRecordBtn) {
-      this.elements.toggleRecordBtn.addEventListener('click', this._onToggleRecordClick);
-    }
-
     // ファイル選択イベント
     if (this.elements.logFileInput) {
       this.elements.logFileInput.addEventListener('change', this._onFileSelected);
     }
 
-    // アプリケーションイベント
-    EventBus.on('recordingStarted', () => this._updateRecordingUI(true));
-    EventBus.on('recordingStopped', () => this._updateRecordingUI(false));
+    // アプリケーションイベント（新しいイベント名を使用）
+    EventBus.on('event:recording:started', () => this._updateRecordingUI(true));
+    EventBus.on('event:recording:stopped', () => this._updateRecordingUI(false));
     EventBus.on('playbackCompleted', this._onPlaybackCompleted.bind(this));
     EventBus.on('playbackStopped', this._onPlaybackStopped.bind(this));
   }
@@ -275,7 +259,7 @@ export class LogManagerComponent {
     this.isProcessingClick = true;
 
     try {
-      if (!this.appController.replayingEnabled) {
+      if (!this.appController.isReplaying()) {
         this.logger.debug('ログ再生モードを開始します');
 
         // 1. ログ再生コンポーネントを表示（強制的に表示）
@@ -312,9 +296,6 @@ export class LogManagerComponent {
         }
         if (this.elements.stopRecordBtn) {
           this.elements.stopRecordBtn.style.display = 'none';
-        }
-        if (this.elements.toggleRecordBtn) {
-          this.elements.toggleRecordBtn.style.display = 'none';
         }
 
         // 5. ボタンのスタイルを変更してアクティブ状態を示す
@@ -390,7 +371,7 @@ export class LogManagerComponent {
 
     // 新しいObserverを作成
     this.visibilityObserver = new MutationObserver((mutations) => {
-      if (this.appController.replayingEnabled) {
+      if (this.appController.isReplaying()) {
         this._ensureReplayComponentsVisible();
       }
     });
@@ -421,7 +402,7 @@ export class LogManagerComponent {
    * @private
    */
   _ensureReplayComponentsVisible() {
-    if (!this.appController.replayingEnabled) return;
+    if (!this.appController.isReplaying()) return;
 
     this.logger.debug('再生コンポーネントの表示状態を確保します');
 
@@ -460,11 +441,11 @@ export class LogManagerComponent {
       this.elements.playbackControlsContainer.style.display = 'block';
       this.elements.playbackControlsContainer.style.visibility = 'visible';
 
-      // playback-controlsが存在しなければAppControllerで初期化
+      // playback-controlsが存在しなければUIComponentManager経由で初期化
       if (!document.getElementById('playback-controls')) {
         this.logger.debug('再生コントロールの初期化を試みます');
-        if (typeof this.appController._initializePlaybackControls === 'function') {
-          const controls = this.appController._initializePlaybackControls('playback-controls-container');
+        if (this.appController?.uiComponentManager?.initializePlaybackControls) {
+          const controls = this.appController.uiComponentManager.initializePlaybackControls('playback-controls-container');
 
           // コントロールが初期化されたら明示的に表示
           if (controls && typeof controls.show === 'function') {
@@ -472,7 +453,7 @@ export class LogManagerComponent {
             this.logger.debug('再生コントロールを初期化して表示しました');
           }
         } else {
-          this.logger.warn('AppControllerに_initializePlaybackControlsメソッドが見つかりません');
+          this.logger.debug('UIComponentManager.initializePlaybackControlsが利用できません');
         }
       } else {
         this.logger.debug('既存の再生コントロールを使用します');
@@ -488,7 +469,7 @@ export class LogManagerComponent {
     this.logger.debug('ログ再生コンポーネントを閉じます');
 
     // 再生中なら停止
-    if (this.appController.replayingEnabled) {
+    if (this.appController.isReplaying()) {
       await this.appController.stopReplay();
       this._showNotification('ログ再生を停止しました');
     }
@@ -522,11 +503,8 @@ export class LogManagerComponent {
     if (this.elements.startRecordBtn) {
       this.elements.startRecordBtn.style.display = 'block';
     }
-    if (this.elements.stopRecordBtn && this.appController && this.appController.recordingEnabled) {
+    if (this.elements.stopRecordBtn && this.appController && this.appController.isRecording()) {
       this.elements.stopRecordBtn.style.display = 'block';
-    }
-    if (this.elements.toggleRecordBtn) {
-      this.elements.toggleRecordBtn.style.display = this.elements.toggleRecordBtn.classList.contains('hidden-legacy-button') ? 'none' : 'block';
     }
 
     // コントロール表示をクリア
@@ -556,27 +534,12 @@ export class LogManagerComponent {
   }
 
   /**
-   * ログ記録ボタンクリックイベントハンドラ（後方互換性用）
-   * @private
-   */
-  async _onToggleRecordClick() {
-    this.logger.debug('後方互換用の記録トグルボタンがクリックされました');
-
-    // 新しいボタンの対応するメソッドを呼び出す
-    if (!this.appController.recordingEnabled) {
-      await this._onStartRecordClick();
-    } else {
-      await this._onStopRecordClick();
-    }
-  }
-
-  /**
    * ログ記録開始ボタンクリックイベントハンドラ
    * @private
    */
   async _onStartRecordClick() {
     // 既に記録中なら何もしない（冪等性）
-    if (this.appController.recordingEnabled) {
+    if (this.appController.isRecording()) {
       this.logger.debug('既に記録中のため、記録開始処理をスキップします');
       return;
     }
@@ -599,7 +562,7 @@ export class LogManagerComponent {
       this.logger.debug('記録開始処理を実行します');
       const success = await this.appController.startRecording();
 
-      if (success && this.appController.recordingEnabled) {
+      if (success && this.appController.isRecording()) {
         // 記録開始ボタンを非表示、記録停止ボタンを表示
         this._showRecordingUI(true);
         this._showNotification('記録を開始しました');
@@ -628,7 +591,7 @@ export class LogManagerComponent {
    */
   async _onStopRecordClick() {
     // 記録中でなければ何もしない（冪等性）
-    if (!this.appController.recordingEnabled) {
+    if (!this.appController.isRecording()) {
       this.logger.debug('記録中でないため、記録停止処理をスキップします');
       return;
     }
@@ -651,7 +614,7 @@ export class LogManagerComponent {
       this.logger.debug('記録停止処理を実行します');
       const result = await this.appController.stopRecording();
 
-      if (result && !this.appController.recordingEnabled) {
+      if (result && !this.appController.isRecording()) {
         // 記録停止ボタンを非表示、記録開始ボタンを表示
         this._showRecordingUI(false);
         this._showNotification('記録を停止しました');
@@ -708,25 +671,11 @@ export class LogManagerComponent {
         if (this.elements.recordStatusText) {
           this.elements.recordStatusText.textContent = '記録中...';
         }
-
-        // 後方互換性のために旧ボタンも更新
-        if (this.elements.toggleRecordBtn) {
-          this.elements.toggleRecordBtn.textContent = '記録停止';
-          this.elements.toggleRecordBtn.classList.add('stop-recording');
-        }
-
         this.elements.logManager.classList.add('recording-active');
       } else {
         if (this.elements.recordStatusText) {
           this.elements.recordStatusText.textContent = '停止中';
         }
-
-        // 後方互換性のために旧ボタンも更新
-        if (this.elements.toggleRecordBtn) {
-          this.elements.toggleRecordBtn.textContent = 'ログ記録';
-          this.elements.toggleRecordBtn.classList.remove('stop-recording');
-        }
-
         this.elements.logManager.classList.remove('recording-active');
       }
     } finally {
@@ -809,8 +758,8 @@ export class LogManagerComponent {
       // デバイス一覧を更新
       if (devices.length > 0) {
         // 元のデバイス設定を保存
-        window.originalDeviceSettings = await this.appController.getAllDevices(true);
-        window.replayDevices = devices;
+        this.originalDeviceSettings = await this.appController.getAllDevices(true);
+        this.replayDevices = devices;
 
         // デバイス設定UIを更新
         this._updateDeviceSettings(devices, true);
@@ -894,16 +843,16 @@ export class LogManagerComponent {
 
     try {
       // AppControllerの再生フラグが立っているか確認
-      if (this.appController && this.appController.replayingEnabled) {
+      if (this.appController && this.appController.isReplaying()) {
         // 明示的に再生停止
         await this.appController.stopReplay();
         this.logger.debug('AppControllerの再生を停止しました');
       }
 
       // 再生デバイスデータ参照のクリア
-      const wasReplayMode = window.replayDevices !== undefined;
+      const wasReplayMode = this.replayDevices !== undefined;
       this.logger.debug(`再生モード状態: ${wasReplayMode}`);
-      window.replayDevices = null;
+      this.replayDevices = null;
 
       // デバイス一覧の表示を維持（フレックス表示を明示的に設定）
       const deviceInputsContainer = document.getElementById('device-inputs');
@@ -918,10 +867,10 @@ export class LogManagerComponent {
       // 元のデバイス設定に戻す
       this.logger.debug('デバイス設定を元に戻します');
       try {
-        if (window.originalDeviceSettings) {
+        if (this.originalDeviceSettings) {
           this.logger.debug('保存されていた元のデバイス設定を使用します');
-          await this._updateDeviceSettings(window.originalDeviceSettings, false);
-          window.originalDeviceSettings = null;
+          await this._updateDeviceSettings(this.originalDeviceSettings, false);
+          this.originalDeviceSettings = null;
         } else {
           this.logger.debug('現在の接続デバイス情報を取得して設定します');
           const currentDevices = await this.appController.getAllDevices(true);
@@ -932,7 +881,7 @@ export class LogManagerComponent {
       }
 
       // モニタリングが停止していれば再開
-      if (this.appController && !this.appController.monitoringEnabled) {
+      if (this.appController && !this.appController.isMonitoring?.()) {
         this.logger.debug('モニタリングを再開します');
         this.appController.startMonitoring();
       }
@@ -1018,13 +967,14 @@ export class LogManagerComponent {
     } else {
       this.logger.warn('DeviceListViewModel not available, cannot update device settings');
 
-      // フォールバック: AppController経由でDeviceListViewModelを取得
-      if (this.appController && this.appController.deviceListViewModel) {
-        this.logger.debug('AppControllerからDeviceListViewModelを使用');
+      // フォールバック: UIComponentManager経由でDeviceListViewModelを取得
+      const deviceListVM = this.appController?.uiComponentManager?.getDeviceListViewModel();
+      if (deviceListVM) {
+        this.logger.debug('UIComponentManager経由でDeviceListViewModelを使用');
         try {
-          this.appController.deviceListViewModel.updateDeviceList(devices, isReplayMode);
+          deviceListVM.updateDeviceList(devices, isReplayMode);
         } catch (error) {
-          this.logger.error('AppControllerからのDeviceListViewModel更新に失敗:', error);
+          this.logger.error('UIComponentManager経由のDeviceListViewModel更新に失敗:', error);
         }
       } else if (isReplayMode) {
         // 再生モードの場合は、MeterViewModelを直接更新
@@ -1090,10 +1040,10 @@ export class LogManagerComponent {
       if (!existingControls) {
         this.logger.debug('PlaybackControlsComponentを新規初期化します');
 
-        // AppControllerにPlaybackControlsComponentを初期化させる
-        if (typeof this.appController._initializePlaybackControls === 'function') {
+        // UIComponentManager経由でPlaybackControlsComponentを初期化
+        if (this.appController?.uiComponentManager?.initializePlaybackControls) {
           // 初期化して結果を保存
-          const controls = this.appController._initializePlaybackControls('playback-controls-container');
+          const controls = this.appController.uiComponentManager.initializePlaybackControls('playback-controls-container');
 
           if (controls) {
             // コントロールが初期化されたら明示的に表示
@@ -1116,7 +1066,7 @@ export class LogManagerComponent {
             this.logger.warn('再生コントロールの初期化に失敗しました');
           }
         } else {
-          this.logger.warn('AppController._initializePlaybackControls メソッドが見つかりません');
+          this.logger.warn('UIComponentManager.initializePlaybackControls メソッドが利用できません');
         }
       } else {
         // 既存のコントロールがある場合は表示状態を確認して設定
@@ -1136,7 +1086,7 @@ export class LogManagerComponent {
    */
   _updateRecordingButtonsState() {
     try {
-      const isRecording = this.appController.recordingEnabled === true;
+      const isRecording = this.appController.isRecording();
       this._updateRecordingUI(isRecording);
     } catch (error) {
       this.logger.error('記録状態の確認中にエラーが発生しました:', error);

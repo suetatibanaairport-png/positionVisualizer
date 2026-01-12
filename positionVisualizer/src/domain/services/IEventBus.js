@@ -1,43 +1,46 @@
 /**
- * IEventEmitter.js
- * イベントエミッターのインターフェース
- * プレゼンテーション層とインフラストラクチャ層の間の依存性を逆転するためのインターフェース
+ * IEventBus.js
+ * イベントバスのインターフェース定義（ドメイン層）
+ *
+ * クリーンアーキテクチャにおける依存性逆転の原則(DIP)を適用するためのインターフェース。
+ * Application層はこのインターフェースに依存し、
+ * Infrastructure層がこのインターフェースを実装する。
  */
 
-import { EventTypes } from '../../domain/events/EventTypes.js';
+import { EventTypes } from '../events/EventTypes.js';
 
 /**
- * イベントエミッターのインターフェース
- * EventBusに依存せず、プレゼンテーション層で使用するためのインターフェース
+ * イベントバスのインターフェース
+ * @interface
  */
-export class IEventEmitter {
+export class IEventBus {
   /**
    * イベントの発行
    * @param {string} eventName イベント名
    * @param {Object} data イベントデータ
    */
   emit(eventName, data) {
-    throw new Error('このメソッドは実装クラスで定義する必要があります');
+    throw new Error('Not implemented: IEventBus.emit()');
   }
 
   /**
-   * イベントの購読
+   * イベントリスナーを登録
    * @param {string} eventName イベント名
    * @param {Function} callback コールバック関数
-   * @param {Object} owner リスナーの所有者（オプション）
+   * @param {Object} owner リスナーの所有者（オプション、メモリリーク防止用）
    * @returns {Function} 購読解除用の関数
    */
   on(eventName, callback, owner = null) {
-    throw new Error('このメソッドは実装クラスで定義する必要があります');
+    throw new Error('Not implemented: IEventBus.on()');
   }
 
   /**
-   * イベントの購読解除
+   * イベントリスナーを解除
    * @param {string} eventName イベント名
    * @param {Function} callback コールバック関数
    */
   off(eventName, callback) {
-    throw new Error('このメソッドは実装クラスで定義する必要があります');
+    throw new Error('Not implemented: IEventBus.off()');
   }
 
   /**
@@ -47,7 +50,7 @@ export class IEventEmitter {
    * @returns {Function} リスナー削除用の関数
    */
   once(eventName, callback) {
-    throw new Error('このメソッドは実装クラスで定義する必要があります');
+    throw new Error('Not implemented: IEventBus.once()');
   }
 
   /**
@@ -56,11 +59,11 @@ export class IEventEmitter {
    * @returns {number} 削除したリスナーの数
    */
   removeListenersByOwner(owner) {
-    throw new Error('このメソッドは実装クラスで定義する必要があります');
+    throw new Error('Not implemented: IEventBus.removeListenersByOwner()');
   }
 
   /**
-   * イベント名の正規化（新しい命名規則への変換）
+   * イベント名を正規化
    * @param {string} eventName イベント名
    * @returns {string} 正規化されたイベント名
    */

@@ -6,6 +6,7 @@
 
 import { DeviceValue } from '../../domain/entities/DeviceValue.js';
 import { IValueRepository } from '../../domain/repositories/IValueRepository.js';
+import { ValueCalculator } from '../../domain/services/ValueCalculator.js';
 import { EventBus } from '../services/EventBus.js';
 import { AppLogger } from '../services/Logger.js';
 import { EventTypes } from '../../domain/events/EventTypes.js';
@@ -355,32 +356,53 @@ export class ValueRepository extends IValueRepository {
         min: null,
         max: null,
         average: null,
+        median: null,
+        movingAverage: [],
         current: null,
         timestamp: now
       };
     }
 
-    // 統計情報の計算
-    const normalizedValues = values
-      .map(v => v.normalizedValue)
-      .filter(v => v !== null && v !== undefined);
+    // 正規化値の配列を取得
+    const normalizedValues = values.map(v => v.normalizedValue);
 
-    const min = Math.min(...normalizedValues);
-    const max = Math.max(...normalizedValues);
-    const sum = normalizedValues.reduce((acc, val) => acc + val, 0);
-    const average = sum / normalizedValues.length;
+    // ValueCalculatorを使用して統計情報を計算
+    const stats = ValueCalculator.calculateStatistics(normalizedValues);
+
+    // 移動平均を計算（窓サイズ5）
+    const movingAverage = ValueCalculator.calculateMovingAverage(normalizedValues, 5);
 
     // 現在値を取得
     const current = this.currentValues.get(deviceId);
 
     return {
       count: values.length,
-      min,
-      max,
-      average,
+      min: stats.min,
+      max: stats.max,
+      average: stats.average,
+      median: stats.median,
+      movingAverage,
       current: current ? current.normalizedValue : null,
       timestamp: now
     };
+  }
+
+  /**
+   * デバイスの移動平均データを取得
+   * @param {string} deviceId デバイスID
+   * @param {number} windowSize 移動平均の窓サイズ
+   * @param {number} limit 取得するデータポイント数
+   * @returns {Promise<Array<number>>} 移動平均値の配列
+   */
+  async getMovingAverageData(deviceId, windowSize = 5, limit = 100) {
+    const history = await this.getValueHistory(deviceId, limit);
+
+    if (history.length === 0) {
+      return [];
+    }
+
+    const normalizedValues = history.map(v => v.normalizedValue);
+    return ValueCalculator.calculateMovingAverage(normalizedValues, windowSize);
   }
 
   /**

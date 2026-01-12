@@ -4,10 +4,10 @@
  * UIの状態を管理し、アプリケーション層とプレゼンテーション層の橋渡しをする
  */
 
-import { IEventEmitter } from '../services/IEventEmitter.js';
-import { ILogger } from '../services/ILogger.js';
-import { EventBus } from '../../infrastructure/services/EventBus.js';
+import { IEventBus } from '../../domain/services/IEventBus.js';
+import { ILogger } from '../../domain/services/ILogger.js';
 import { EventTypes } from '../../domain/events/EventTypes.js';
+import { ValueCalculator } from '../../domain/services/ValueCalculator.js';
 
 /**
  * メーターのビューモデルクラス
@@ -16,13 +16,15 @@ export class MeterViewModel {
   /**
    * メーターのビューモデルを初期化
    * @param {Object} options オプション設定
-   * @param {IEventEmitter} eventEmitter イベントエミッター
+   * @param {IEventBus} eventEmitter イベントエミッター
    * @param {ILogger} logger ロガー
    */
   constructor(options = {}, eventEmitter, logger) {
     this.options = {
       maxDevices: 6,                // 最大デバイス数
-      interpolationTime: 200,       // 値の補間時間（ミリ秒）
+      interpolationTime: 80,        // 値の補間時間（ミリ秒）- レスポンシブに
+      enableSmoothing: true,        // 平滑化を有効化
+      smoothingFactor: 0.7,         // 平滑化係数 (0-1) - より即応性を高める
       ...options
     };
 
@@ -62,8 +64,14 @@ export class MeterViewModel {
     this._interpolating = Array(this.options.maxDevices).fill(false);
 
     // デバイス値の更新イベントと再生イベントを監視
-    EventBus.on(EventTypes.DEVICE_VALUE_UPDATED, (event) => {
+    this.eventEmitter.on(EventTypes.DEVICE_VALUE_UPDATED, (event) => {
       if (!event || !event.deviceId) return;
+
+      // 再生モード中はライブデバイスデータを無視
+      if (this.isPlaybackMode) {
+        this.logger.debug(`再生モード中のためライブデバイスデータを無視: ${event.deviceId}`);
+        return;
+      }
 
       const deviceId = event.deviceId;
       const deviceIndex = this.getOrAssignDeviceIndex(deviceId);
@@ -77,7 +85,7 @@ export class MeterViewModel {
     });
 
     // 再生値専用のイベントリスナー
-    EventBus.on(EventTypes.DEVICE_VALUE_REPLAYED, (event) => {
+    this.eventEmitter.on(EventTypes.DEVICE_VALUE_REPLAYED, (event) => {
       if (!event || !event.deviceId) return;
 
       const deviceId = event.deviceId;
@@ -91,18 +99,31 @@ export class MeterViewModel {
       }
     });
 
+    // デバイス切断イベントの監視
+    this.eventEmitter.on(EventTypes.DEVICE_DISCONNECTED, (event) => {
+      if (!event || !event.deviceId) return;
+
+      const deviceId = event.deviceId;
+      const deviceIndex = this.getDeviceIndex(deviceId);
+
+      if (deviceIndex >= 0) {
+        this.logger.debug(`デバイス切断イベント: ${deviceId}, インデックス: ${deviceIndex}`);
+        this.setValue(deviceIndex, null, false);
+      }
+    });
+
     // 再生モード状態管理（表示のみに使用）
-    EventBus.on('playbackStarted', () => {
+    this.eventEmitter.on('playbackStarted', () => {
       this.logger.debug('再生開始イベントを受信しました');
       this.isPlaybackMode = true;
     });
 
-    EventBus.on('playbackStopped', () => {
+    this.eventEmitter.on('playbackStopped', () => {
       this.logger.debug('再生停止イベントを受信しました');
       this.isPlaybackMode = false;
     });
 
-    EventBus.on('playbackCompleted', () => {
+    this.eventEmitter.on('playbackCompleted', () => {
       this.logger.debug('再生完了イベントを受信しました');
       this.isPlaybackMode = false;
     });
@@ -162,16 +183,6 @@ export class MeterViewModel {
   }
 
   /**
-   * デバイス値の設定
-   * @param {number} index デバイスインデックス
-   * @param {number} value デバイス値
-   * @param {boolean} connected 接続状態
-   * @returns {boolean} 成功したかどうか
-   *
-   * 注意: この関数はデバイスの値の設定と共に接続状態も管理します。
-   * 値の更新があるたびに、デバイスが応答していると判断し、タイムアウト処理をリセットします。
-   */
-  /**
    * 値オブジェクトからnormalizedValueを抽出
    * @param {Object} valueObj 値オブジェクト
    * @returns {number|null} 正規化された値
@@ -209,6 +220,17 @@ export class MeterViewModel {
     return null;
   }
 
+  /**
+   * デバイス値の設定
+   * @param {number} index デバイスインデックス
+   * @param {number} value デバイス値
+   * @param {boolean} connected 接続状態
+   * @param {string} source データソース（オプション）
+   * @returns {boolean} 成功したかどうか
+   *
+   * 注意: この関数はデバイスの値の設定と共に接続状態も管理します。
+   * 値の更新があるたびに、デバイスが応答していると判断し、タイムアウト処理をリセットします。
+   */
   setValue(index, value, connected = true, source = null) {
     if (index < 0 || index >= this.options.maxDevices) {
       this.logger.warn(`Attempt to set value for invalid device index: ${index}`);
@@ -270,17 +292,28 @@ export class MeterViewModel {
       return false;
     }
 
+    // ノイズ除去（平滑化）を適用
+    let smoothedValue = value;
+    if (this.options.enableSmoothing && this.state.values[index] !== null) {
+      smoothedValue = ValueCalculator.smoothValue(
+        this.state.values[index],
+        value,
+        this.options.smoothingFactor
+      );
+      this.logger.debug(`Applied smoothing for device ${index}: ${value} -> ${smoothedValue}`);
+    }
+
     // 値の変化が小さい場合は即時更新
     if (this.state.values[index] === null ||
-        Math.abs((this.state.values[index] || 0) - value) < 1) {
-      this.logger.debug(`Small change or initial value for device ${index}, setting directly: ${value}`);
-      this._setValueDirectly(index, value);
+        Math.abs((this.state.values[index] || 0) - smoothedValue) < 1) {
+      this.logger.debug(`Small change or initial value for device ${index}, setting directly: ${smoothedValue}`);
+      this._setValueDirectly(index, smoothedValue);
       return true;
     }
 
     // 値の補間を開始
-    this.logger.debug(`Starting interpolation for device ${index}: ${this.state.values[index]} -> ${value}`);
-    this._startInterpolation(index, value);
+    this.logger.debug(`Starting interpolation for device ${index}: ${this.state.values[index]} -> ${smoothedValue}`);
+    this._startInterpolation(index, smoothedValue);
     return true;
   }
 
@@ -327,35 +360,18 @@ export class MeterViewModel {
    * @returns {boolean} 成功したかどうか
    */
   setVisible(index, visible) {
-    this.logger.debug(`[DEBUG TOGGLE] setVisible called for index: ${index}, visible: ${visible}`);
-
-    // 型チェック
-    this.logger.debug(`[DEBUG TOGGLE] index type: ${typeof index}, visible type: ${typeof visible}`);
-
     if (index < 0 || index >= this.options.maxDevices) {
-      this.logger.warn(`[DEBUG TOGGLE] Attempt to set visibility for invalid device index: ${index}`);
+      this.logger.warn(`Attempt to set visibility for invalid device index: ${index}`);
       return false;
     }
 
-    // 現在の状態をログ出力
-    this.logger.debug(`[DEBUG TOGGLE] Current state.visible array: ${JSON.stringify(this.state.visible)}`);
-    this.logger.debug(`[DEBUG TOGGLE] Current visibility for index ${index}: ${this.state.visible[index]}`);
-
     // Boolean型の値に変換して一貫性を確保
     const visibleBool = !!visible;
-    this.logger.debug(`[DEBUG TOGGLE] Converted visibleBool: ${visibleBool}`);
 
     if (this.state.visible[index] !== visibleBool) {
-      this.logger.debug(`[DEBUG TOGGLE] Visibility changed: Setting visibility for device ${index} to ${visibleBool ? 'visible' : 'hidden'}`);
       this.state.visible[index] = visibleBool;
-
-      // 更新後の状態をログ出力
-      this.logger.debug(`[DEBUG TOGGLE] Updated state.visible array: ${JSON.stringify(this.state.visible)}`);
-
       this._notifyChange();
       return true;
-    } else {
-      this.logger.debug(`[DEBUG TOGGLE] Visibility unchanged (already ${visibleBool ? 'visible' : 'hidden'}) for device ${index}`);
     }
     return false;
   }
@@ -422,9 +438,6 @@ export class MeterViewModel {
     if (isTemporary) {
       // 一時的な切断状態にする（接続状態は true のまま維持）
       this.state.tempDisconnected[index] = true;
-
-      // デバイスの接続状態を維持（UXの安定性のため）
-      // this.state.connected[index] = true;
 
       // 値は維持し、タイムアウト後に完全に切断する
       // 60秒間（通常のタイムアウトの6倍）一時的な切断状態を維持
@@ -556,6 +569,47 @@ export class MeterViewModel {
     // 冗長なログ出力を減らし、重要な状態変更のみログ出力する
     this.logger.debug(`State change: ${this.state.connected.filter(c => c).length} devices connected`);
     this.eventEmitter.emit('meterViewModel:change', { ...this.state });
+  }
+
+  /**
+   * デバイスを削除
+   * @param {string} deviceId デバイスID
+   * @returns {boolean} 成功したかどうか
+   */
+  removeDevice(deviceId) {
+    const index = this.getDeviceIndex(deviceId);
+    if (index < 0) {
+      this.logger.warn(`Cannot remove non-existent device: ${deviceId}`);
+      return false;
+    }
+
+    // 状態をクリア
+    this.state.values[index] = null;
+    this.state.names[index] = null;
+    this.state.icons[index] = null;
+    this.state.connected[index] = false;
+    this.state.visible[index] = true;
+    this.state.lastUpdate[index] = null;
+    this.state.tempDisconnected[index] = false;
+
+    // デバイスマッピングから削除
+    this.deviceMapping.delete(deviceId);
+
+    // 補間状態をクリア
+    this._targetValues[index] = null;
+    this._startValues[index] = null;
+    this._startTime[index] = null;
+    this._interpolating[index] = false;
+
+    // 切断タイマーをクリア
+    if (this._disconnectTimers[index]) {
+      clearTimeout(this._disconnectTimers[index]);
+      this._disconnectTimers[index] = null;
+    }
+
+    this.logger.info(`Device removed from ViewModel: ${deviceId}`);
+    this._notifyChange();
+    return true;
   }
 
   /**

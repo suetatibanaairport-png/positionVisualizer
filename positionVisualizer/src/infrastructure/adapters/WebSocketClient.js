@@ -256,7 +256,13 @@ export class WebSocketClient {
             if (payload.values && Array.isArray(payload.values)) {
               payload.values.forEach((value, index) => {
                 if (value !== null && value !== undefined) {
-                  const deviceId = `lever${index + 1}`;
+                  // deviceIds配列があり、かつ有効なIDがある場合のみ処理
+                  const deviceId = payload.deviceIds && payload.deviceIds[index];
+                  if (!deviceId) {
+                    // 有効なdeviceIdがない場合はスキップ（偽IDを生成しない）
+                    return;
+                  }
+
                   const deviceName = payload.names && payload.names[index] ? payload.names[index] : null;
 
                   // deviceメッセージを生成

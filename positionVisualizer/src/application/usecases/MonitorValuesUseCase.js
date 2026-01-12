@@ -5,8 +5,9 @@
  */
 
 import { DeviceValueUpdatedEvent } from '../../domain/events/DeviceEvents.js';
-import { AppLogger } from '../../infrastructure/services/Logger.js';
-import { EventBus } from '../../infrastructure/services/EventBus.js';
+import { ValueCalculator } from '../../domain/services/ValueCalculator.js';
+// 注: IEventBus, ILogger はドメイン層のインターフェース
+// 実装はAppBootstrapで注入される
 
 /**
  * デバイス値モニタリングのユースケースクラス
@@ -16,18 +17,22 @@ export class MonitorValuesUseCase {
    * モニタリングユースケースのコンストラクタ
    * @param {Object} deviceRepository デバイスリポジトリ
    * @param {Object} valueRepository 値リポジトリ
+   * @param {Object} eventBus イベントバス（IEventBus実装）
+   * @param {Object} logger ロガー（ILogger実装）
    * @param {Object} options オプション設定
    */
-  constructor(deviceRepository, valueRepository, options = {}) {
+  constructor(deviceRepository, valueRepository, eventBus, logger, options = {}) {
     this.deviceRepository = deviceRepository;
     this.valueRepository = valueRepository;
+    this.eventBus = eventBus;
+    this.logger = logger || { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} };
     this.options = {
-      monitoringInterval: 100,       // モニタリング間隔（ミリ秒）
+      monitoringInterval: 50,        // モニタリング間隔（ミリ秒）- より頻繁に
       useWebSocketUpdates: true,     // WebSocketからの更新を使用するか
       adaptivePolling: true,         // 適応的なポーリングを使用するか
-      minPollingInterval: 50,        // 最小ポーリング間隔（ミリ秒）
-      maxPollingInterval: 1000,      // 最大ポーリング間隔（ミリ秒）
-      valueChangeThreshold: 5,       // 値変更通知のしきい値
+      minPollingInterval: 30,        // 最小ポーリング間隔（ミリ秒）
+      maxPollingInterval: 200,       // 最大ポーリング間隔（ミリ秒）- 最大でも200ms
+      valueChangeThreshold: 3,       // 値変更通知のしきい値 - より敏感に検出
       ...options
     };
 
@@ -36,9 +41,6 @@ export class MonitorValuesUseCase {
     this.monitoringTimer = null;
     this.deviceUpdateTimes = new Map(); // 最終更新時間を追跡
     this.devicePollingIntervals = new Map(); // デバイスごとのポーリング間隔
-
-    // ロガー
-    this.logger = AppLogger.createLogger('MonitorValuesUseCase');
   }
 
   /**
@@ -77,7 +79,7 @@ export class MonitorValuesUseCase {
         // 値の変更が閾値を超える場合にイベント発行
         if (previousValue && this._shouldNotifyValueChange(previousValue, currentValue)) {
           const event = new DeviceValueUpdatedEvent(deviceId, currentValue, previousValue);
-          EventBus.emit('deviceValueUpdated', event);
+          this.eventBus.emit('deviceValueUpdated', event);
         }
 
         // ポーリング間隔の調整（適応的ポーリングが有効な場合）
@@ -145,7 +147,7 @@ export class MonitorValuesUseCase {
     }, monitoringInterval);
 
     // 開始イベントを発行
-    EventBus.emit('monitoringStarted', { interval: monitoringInterval });
+    this.eventBus.emit('monitoringStarted', { interval: monitoringInterval });
 
     return true;
   }
@@ -171,7 +173,7 @@ export class MonitorValuesUseCase {
     this.logger.info('Monitoring stopped');
 
     // 停止イベントを発行
-    EventBus.emit('monitoringStopped', {});
+    this.eventBus.emit('monitoringStopped', {});
 
     return true;
   }
@@ -219,7 +221,7 @@ export class MonitorValuesUseCase {
     if (prevNormalized === null || currNormalized === null) return true;
 
     // 変化量がしきい値を超えるか確認
-    return Math.abs(currNormalized - prevNormalized) >= this.options.valueChangeThreshold;
+    return ValueCalculator.shouldTriggerEvent(prevNormalized, currNormalized, this.options.valueChangeThreshold);
   }
 
   /**
@@ -239,7 +241,10 @@ export class MonitorValuesUseCase {
     let changeRate = 0;
 
     if (previousValue.normalizedValue !== null && currentValue.normalizedValue !== null) {
-      changeRate = Math.abs(currentValue.normalizedValue - previousValue.normalizedValue) / 100;
+      changeRate = ValueCalculator.calculateChangeRate(
+        previousValue.normalizedValue,
+        currentValue.normalizedValue
+      );
     }
 
     // 変化率に基づいて新しい間隔を計算

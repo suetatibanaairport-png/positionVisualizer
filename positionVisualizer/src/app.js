@@ -145,71 +145,51 @@ function setupUIEvents(app) {
     });
   }
 
-  // イベントハンドラー関数を定義（重複コードを防止するため）
-  const handleDeviceConnected = () => {
-    // デバイス接続時にUIを更新
-    initializeDeviceUI(app).catch(error => {
-      logger.error('Error updating UI after device connection:', error);
+  // 全デバイス削除ボタンのイベントリスナー
+  const clearAllDevicesButton = document.getElementById('clear-all-devices');
+  if (clearAllDevicesButton) {
+    logger.debug('Setting up clear-all-devices button click event');
+    clearAllDevicesButton.addEventListener('click', async () => {
+      if (confirm('全デバイスを削除しますか？この操作は取り消せません。')) {
+        logger.info('Clearing all devices');
+        await app.resetDevices();
+      }
     });
-    logger.debug('Device connected, updated device settings');
-  };
+  }
 
-  const handleDeviceDisconnected = () => {
-    // デバイス切断時にUIを更新
-    initializeDeviceUI(app).catch(error => {
-      logger.error('Error updating UI after device disconnection:', error);
+  // デバイス再スキャンボタンのイベントリスナー
+  const rescanDevicesButton = document.getElementById('rescan-devices');
+  if (rescanDevicesButton) {
+    logger.debug('Setting up rescan-devices button click event');
+    rescanDevicesButton.addEventListener('click', async () => {
+      logger.info('Triggering device rescan');
+
+      // ボタンを無効化してスキャン中であることを表示
+      rescanDevicesButton.disabled = true;
+      rescanDevicesButton.textContent = '🔍 スキャン中...';
+
+      try {
+        // AppControllerのscanDevicesメソッドを呼び出し
+        if (app && typeof app.scanDevices === 'function') {
+          await app.scanDevices();
+          logger.info('Device rescan completed successfully');
+        } else {
+          logger.warn('scanDevices method not available on AppController');
+        }
+      } catch (error) {
+        logger.error('Error during device rescan:', error);
+      } finally {
+        // ボタンを再度有効化
+        setTimeout(() => {
+          rescanDevicesButton.disabled = false;
+          rescanDevicesButton.textContent = '🔍 デバイスを再スキャン';
+        }, 2000); // 2秒後に元に戻す（ユーザーフィードバック）
+      }
     });
-    logger.debug('Device disconnected, updated device settings');
-  };
+  }
 
-  const handleDevicesReset = () => {
-    // デバイスリセット時にUIを更新
-    initializeDeviceUI(app).catch(error => {
-      logger.error('Error updating UI after devices reset:', error);
-    });
-    logger.debug('Devices reset, updated device settings');
-  };
-
-  const handleDeviceVisibilityChanged = async (data) => {
-    if (data && data.deviceId && app) {
-      // AppControllerインスタンスを使用
-      await app.setDeviceVisibility(data.deviceId, data.isVisible);
-      logger.debug(`Device visibility event handled by AppController: ${data.deviceId} -> ${data.isVisible ? 'visible' : 'hidden'}`);
-    }
-  };
-
-  const handleDeviceNameChanged = async (data) => {
-    if (data && data.deviceId && data.newName && app) {
-      // AppControllerインスタンスを使用
-      await app.setDeviceName(data.deviceId, data.newName);
-      logger.debug(`Device name event handled by AppController: ${data.deviceId} -> ${data.newName}`);
-    }
-  };
-
-  const handleDeviceIconChanged = async (data) => {
-    if (data && data.deviceId && data.iconUrl && app) {
-      await app.setDeviceIcon(data.deviceId, data.iconUrl);
-      logger.debug(`Device icon event handled by AppController: ${data.deviceId}`);
-    }
-  };
-
-  // デバイスイベント - 新しい命名規則のイベント
-  EventBus.on(EventTypes.DEVICE_CONNECTED, handleDeviceConnected);
-  EventBus.on(EventTypes.DEVICE_DISCONNECTED, handleDeviceDisconnected);
-  EventBus.on(EventTypes.DEVICES_RESET, handleDevicesReset);
-
-  // DeviceListViewModelからのイベント処理 - 新しい命名規則のイベント
-  EventBus.on(EventTypes.DEVICE_VISIBILITY_CHANGED, handleDeviceVisibilityChanged);
-  EventBus.on(EventTypes.DEVICE_NAME_CHANGED, handleDeviceNameChanged);
-  EventBus.on(EventTypes.DEVICE_ICON_CHANGED, handleDeviceIconChanged);
-
-  // 後方互換性のためにレガシーイベント名もサポート
-  EventBus.on('deviceConnected', handleDeviceConnected);
-  EventBus.on('deviceDisconnected', handleDeviceDisconnected);
-  EventBus.on('devicesReset', handleDevicesReset);
-  EventBus.on('deviceVisibilityChange', handleDeviceVisibilityChanged);
-  EventBus.on('deviceNameChange', handleDeviceNameChanged);
-  EventBus.on('deviceIconChange', handleDeviceIconChanged);
+  // 注意: デバイスイベント（接続/切断/リセット/表示変更/名前変更/アイコン変更）は
+  // AppControllerが処理するため、ここでの登録は不要
 }
 
 /**
@@ -223,35 +203,17 @@ async function initializeDeviceUI(app) {
     const connectedDevices = await app.getAllDevices(true);
     logger.debug(`接続済みデバイス数: ${connectedDevices.length}`);
 
-    // DeviceListViewModelはAppControllerから取得
-    const deviceListViewModel = app.deviceListViewModel;
+    // DeviceListViewModelはUIComponentManager経由で取得
+    const deviceListViewModel = app.uiComponentManager?.getDeviceListViewModel();
 
     // DeviceListViewModelを使用してデバイス一覧を更新
     if (deviceListViewModel) {
-      logger.debug('【リファクタリング成功】DeviceListViewModel経由でデバイス一覧を初期化');
+      logger.debug('DeviceListViewModel経由でデバイス一覧を初期化');
       deviceListViewModel.updateDeviceList(connectedDevices);
     } else {
-      // デバイスリストが初期化されていない場合はここで初期化を試みる
-      logger.debug('DeviceListViewModel未初期化 - 初期化を試みます');
-
-      try {
-        // AppControllerのメソッドを使って初期化を試みる
-        if (app && typeof app._initializeDeviceListViewModel === 'function') {
-          app._initializeDeviceListViewModel();
-
-          // 初期化後、再度DeviceListViewModelを取得して更新を試みる
-          if (app.deviceListViewModel) {
-            logger.debug('DeviceListViewModel初期化成功 - デバイス一覧を更新します');
-            app.deviceListViewModel.updateDeviceList(connectedDevices);
-          } else {
-            logger.warn('DeviceListViewModel初期化失敗 - プレゼンテーション層の処理に依存します');
-          }
-        } else {
-          logger.warn('_initializeDeviceListViewModel メソッドが利用できません');
-        }
-      } catch (initError) {
-        logger.error('DeviceListViewModel初期化中にエラー発生:', initError);
-      }
+      // AppController.start()がDeviceListViewModelを初期化するため、
+      // ここでの初期化は不要。デバッグログのみ出力
+      logger.debug('DeviceListViewModelはAppController.start()で初期化されます');
     }
 
     return true;

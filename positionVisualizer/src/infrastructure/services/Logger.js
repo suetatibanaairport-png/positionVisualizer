@@ -7,7 +7,7 @@
 /**
  * ログレベルの定義
  */
-export const LogLevel = {
+const LogLevel = {
   TRACE: 0,
   DEBUG: 1,
   INFO: 2,

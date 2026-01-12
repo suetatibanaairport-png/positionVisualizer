@@ -19,6 +19,7 @@ export const EventTypes = {
   DEVICE_DISCONNECTED: 'event:device:disconnected',
   DEVICE_DISCOVERED: 'event:device:discovered',
   DEVICE_UPDATED: 'event:device:updated',
+  DEVICE_REMOVED: 'event:device:removed',
   DEVICE_VALUE_UPDATED: 'event:device:value:updated',
   DEVICE_VALUE_REPLAYED: 'event:device:value:replayed', // 再生データから来た値の更新
   DEVICE_ERROR: 'event:device:error',
@@ -47,6 +48,7 @@ export const EventTypes = {
   COMMAND_SET_DEVICE_VISIBILITY: 'command:device:setVisibility',
   COMMAND_SET_DEVICE_NAME: 'command:device:setName',
   COMMAND_SET_DEVICE_ICON: 'command:device:setIcon',
+  COMMAND_REMOVE_DEVICE: 'command:device:remove',
   COMMAND_RESET_DEVICES: 'command:devices:reset',
 
   // クエリ（データ要求）
@@ -57,5 +59,3 @@ export const EventTypes = {
   RESPONSE_ALL_DEVICES: 'response:devices:all',
   RESPONSE_DEVICE_INFO: 'response:device:info'
 };
-
-export default EventTypes;

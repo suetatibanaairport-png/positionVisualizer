@@ -5,7 +5,7 @@
  */
 
 import { AppLogger } from '../services/Logger.js';
-import { ILogger } from '../../presentation/services/ILogger.js';
+import { ILogger } from '../../domain/services/ILogger.js';
 
 /**
  * AppLoggerのアダプタークラス

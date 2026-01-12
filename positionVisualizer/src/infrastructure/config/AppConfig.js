@@ -95,4 +95,3 @@ class AppConfig {
 
 // 直接のインスタンス化ではなくgetInstanceを使うように促す
 export const appConfig = AppConfig.getInstance();
-export default appConfig;

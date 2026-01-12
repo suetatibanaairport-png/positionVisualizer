@@ -13,6 +13,7 @@ import { DeviceRepository } from '../infrastructure/repositories/DeviceRepositor
 import { ValueRepository } from '../infrastructure/repositories/ValueRepository.js';
 import { SettingsRepository } from '../infrastructure/repositories/SettingsRepository.js';
 import { LogSessionRepository } from '../infrastructure/repositories/LogSessionRepository.js';
+import { OverlaySyncService } from '../infrastructure/services/OverlaySyncService.js';
 
 // アプリケーション層
 import { DeviceService } from './services/DeviceService.js';
@@ -121,6 +122,15 @@ class AppBootstrap {
     const eventBusAdapter = new EventBusAdapter();
     const loggerAdapter = new LoggerAdapter('System');
 
+    // オーバーレイ同期サービス（BroadcastChannelでウィンドウ間同期）
+    const overlaySyncLogger = new LoggerAdapter('OverlaySyncService');
+    const isOverlay = this.options.isOverlay || false;
+    const overlaySyncService = new OverlaySyncService(
+      eventBusAdapter,
+      overlaySyncLogger,
+      isOverlay
+    );
+
     return {
       storageAdapter,
       webSocketClient,
@@ -129,7 +139,8 @@ class AppBootstrap {
       settingsRepository,
       logSessionRepository,
       eventBus: eventBusAdapter,
-      logger: loggerAdapter
+      logger: loggerAdapter,
+      overlaySyncService
     };
   }
 
@@ -142,10 +153,19 @@ class AppBootstrap {
   _initializeApplicationLayer(infraComponents) {
     this.logger.debug('Initializing application layer');
 
-    // サービス
+    // 各サービス/ユースケース用のロガーを作成
+    const deviceServiceLogger = new LoggerAdapter('DeviceService');
+    const monitorUseCaseLogger = new LoggerAdapter('MonitorValuesUseCase');
+    const recordSessionLogger = new LoggerAdapter('RecordSessionUseCase');
+    const replaySessionLogger = new LoggerAdapter('LogReplayUseCase');
+    const logServiceLogger = new LoggerAdapter('LogService');
+
+    // サービス（依存性注入）
     const deviceService = new DeviceService(
       infraComponents.deviceRepository,
       infraComponents.valueRepository,
+      infraComponents.eventBus,
+      deviceServiceLogger,
       {
         maxDevices: this.options.maxDevices,
         deviceTimeoutMs: 0, // 0を設定してタイムアウト機能を完全に無効化
@@ -153,10 +173,12 @@ class AppBootstrap {
       }
     );
 
-    // ユースケース
+    // ユースケース（依存性注入）
     const monitorUseCase = new MonitorValuesUseCase(
       infraComponents.deviceRepository,
       infraComponents.valueRepository,
+      infraComponents.eventBus,
+      monitorUseCaseLogger,
       {
         monitoringInterval: this.options.monitorInterval
       }
@@ -164,21 +186,27 @@ class AppBootstrap {
 
     const recordSessionUseCase = new RecordSessionUseCase(
       infraComponents.logSessionRepository,
-      infraComponents.valueRepository
+      infraComponents.valueRepository,
+      infraComponents.eventBus,
+      recordSessionLogger
     );
 
     const replaySessionUseCase = new LogReplayUseCase(
       infraComponents.logSessionRepository,
+      infraComponents.eventBus,
+      replaySessionLogger,
       {
         autoRewind: true,
         replaySpeedMultiplier: 1.0
       }
     );
 
-    // ログサービス
+    // ログサービス（依存性注入）
     const logService = new LogService(
       infraComponents.logSessionRepository,
-      infraComponents.deviceRepository
+      infraComponents.deviceRepository,
+      infraComponents.eventBus,
+      logServiceLogger
     );
 
     return {
@@ -224,10 +252,15 @@ class AppBootstrap {
       infraComponents.logger
     );
 
-    // レンダラー
-    const meterRenderer = containerElement ? new MeterRenderer(containerElement, {
-      size: Math.min(containerElement.clientWidth || 500, containerElement.clientHeight || 500)
-    }) : null;
+    // レンダラー（ロガーを注入）
+    const meterRendererLogger = new LoggerAdapter('MeterRenderer');
+    const meterRenderer = containerElement ? new MeterRenderer(
+      containerElement,
+      {
+        size: Math.min(containerElement.clientWidth || 500, containerElement.clientHeight || 500)
+      },
+      meterRendererLogger
+    ) : null;
 
     // デバイスリストViewModel（インターフェースを注入）
     const deviceListViewModel = new DeviceListViewModel(

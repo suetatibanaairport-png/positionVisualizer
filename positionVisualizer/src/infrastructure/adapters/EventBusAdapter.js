@@ -1,18 +1,18 @@
 /**
  * EventBusAdapter.js
  * イベントバスのアダプター
- * インフラストラクチャのEventBusをIEventEmitterインターフェースに適合させる
+ * インフラストラクチャのEventBusをIEventBusインターフェースに適合させる
  */
 
 import { EventBus } from '../services/EventBus.js';
-import { IEventEmitter } from '../../presentation/services/IEventEmitter.js';
+import { IEventBus } from '../../domain/services/IEventBus.js';
 import { EventTypes } from '../../domain/events/EventTypes.js';
 
 /**
  * EventBusのアダプタークラス
- * IEventEmitterインターフェースを実装し、実際の処理はEventBusに委譲する
+ * IEventBusインターフェースを実装し、実際の処理はEventBusに委譲する
  */
-export class EventBusAdapter extends IEventEmitter {
+export class EventBusAdapter extends IEventBus {
   /**
    * コンストラクタ
    * @param {Object} options オプション設定

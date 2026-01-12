@@ -115,6 +115,9 @@
     <div class="container">
         <div class="controls">
             <h2>デバイス設定</h2>
+            <button id="rescan-devices" class="rescan-button" title="デバイスを再スキャン">
+                🔍 デバイスを再スキャン
+            </button>
             <div id="device-inputs" class="device-inputs">
                 <!-- デバイスリストが動的に生成されます -->
                 <div id="no-devices-message" class="no-devices-message">デバイスが接続されていません</div>
@@ -125,6 +128,9 @@
             <div class="visualizer-header">
                 <h2 class="visualizer-title">プレビュー</h2>
                 <div class="header-buttons">
+                    <button id="clear-all-devices" class="overlay-button danger-button" title="全デバイスを削除">
+                        全デバイス削除
+                    </button>
                     <button id="reset-devices" class="overlay-button reset-button" title="デバイスリストをリセット">
                         レバー表示をリセット
                     </button>

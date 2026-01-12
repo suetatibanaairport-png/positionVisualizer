@@ -4,8 +4,6 @@
  * イベントは状態変化を表し、他のコンポーネントに通知するために使用
  */
 
-import { EventTypes } from './EventTypes.js';
-
 /**
  * デバイスイベントの基底クラス
  */
@@ -240,29 +238,3 @@ export class DevicesResetEvent extends DeviceEvent {
   }
 }
 
-/**
- * すべてのデバイスイベントタイプのリスト
- * 古いイベント名と新しいイベント名のマッピング
- */
-export const DeviceEventTypes = {
-  // 旧タイプ名（クラス名）
-  DEVICE_DISCOVERED: 'DeviceDiscoveredEvent',
-  DEVICE_CONNECTED: 'DeviceConnectedEvent',
-  DEVICE_DISCONNECTED: 'DeviceDisconnectedEvent',
-  DEVICE_VALUE_UPDATED: 'DeviceValueUpdatedEvent',
-  DEVICE_UPDATED: 'DeviceUpdatedEvent',
-  DEVICE_ERROR: 'DeviceErrorEvent',
-  DEVICES_RESET: 'DevicesResetEvent',
-
-  // EventTypesとの対応
-  DISCOVERED: EventTypes.DEVICE_DISCOVERED,
-  CONNECTED: EventTypes.DEVICE_CONNECTED,
-  DISCONNECTED: EventTypes.DEVICE_DISCONNECTED,
-  VALUE_UPDATED: EventTypes.DEVICE_VALUE_UPDATED,
-  UPDATED: EventTypes.DEVICE_UPDATED,
-  ERROR: EventTypes.DEVICE_ERROR,
-  RESET: EventTypes.DEVICES_RESET,
-  VISIBILITY_CHANGED: EventTypes.DEVICE_VISIBILITY_CHANGED,
-  NAME_CHANGED: EventTypes.DEVICE_NAME_CHANGED,
-  ICON_CHANGED: EventTypes.DEVICE_ICON_CHANGED
-};
