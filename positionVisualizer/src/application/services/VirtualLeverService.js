@@ -90,10 +90,25 @@ export class VirtualLeverService {
         leverCount: 0  // まだレバーは変換されていない
       });
 
-      this.logger.debug('Virtual mode enabled event emitted, now converting devices');
+      this.logger.debug('Virtual mode enabled event emitted, now restoring or converting devices');
 
-      // 既存デバイスを仮想レバーに変換（初期値発行含む）
-      await this._convertExistingDevicesToVirtual();
+      // 保存された仮想レバーを復元
+      const savedLevers = await this.virtualLeverRepository.getLevers();
+      if (savedLevers.length > 0) {
+        // 保存データがある場合は復元
+        this.logger.info(`Restoring ${savedLevers.length} saved virtual levers`);
+        savedLevers.forEach(lever => {
+          this.session.addLever(lever);
+          this._emitValueUpdate(lever.id, lever.initialValue);
+
+          // 復元したレバーごとにイベントを発行してUIを更新
+          this.eventBus.emit(EventTypes.VIRTUAL_LEVER_ADDED, { lever });
+        });
+      } else {
+        // 保存データがない場合のみ、既存デバイスを変換（初期値発行含む）
+        this.logger.debug('No saved levers found, converting existing devices');
+        await this._convertExistingDevicesToVirtual();
+      }
 
       this.logger.info(`Virtual mode enabled with ${this.session.getLeverCount()} levers`);
       return true;
