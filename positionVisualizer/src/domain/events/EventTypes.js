@@ -39,6 +39,16 @@ export const EventTypes = {
   REPLAY_PAUSED: 'event:replay:paused',
   REPLAY_RESUMED: 'event:replay:resumed',
 
+  // 仮想レバー関連イベント
+  VIRTUAL_LEVER_MODE_ENABLED: 'event:virtualLever:mode:enabled',
+  VIRTUAL_LEVER_MODE_DISABLED: 'event:virtualLever:mode:disabled',
+  VIRTUAL_LEVER_ADDED: 'event:virtualLever:added',
+  VIRTUAL_LEVER_REMOVED: 'event:virtualLever:removed',
+  VIRTUAL_LEVER_UPDATED: 'event:virtualLever:updated',
+  VIRTUAL_LEVER_ANIMATION_STARTED: 'event:virtualLever:animation:started',
+  VIRTUAL_LEVER_ANIMATION_STOPPED: 'event:virtualLever:animation:stopped',
+  VIRTUAL_LEVER_ANIMATION_COMPLETED: 'event:virtualLever:animation:completed',
+
   // アプリケーション状態関連イベント
   APP_STARTED: 'event:app:started',
   MONITORING_STARTED: 'event:monitoring:started',

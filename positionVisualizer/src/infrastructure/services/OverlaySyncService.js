@@ -77,6 +77,16 @@ export class OverlaySyncService {
       'playbackModeChanged',
       'playbackFullyStopped',
 
+      // 仮想レバー関連
+      EventTypes.VIRTUAL_LEVER_MODE_ENABLED,
+      EventTypes.VIRTUAL_LEVER_MODE_DISABLED,
+      EventTypes.VIRTUAL_LEVER_ADDED,
+      EventTypes.VIRTUAL_LEVER_REMOVED,
+      EventTypes.VIRTUAL_LEVER_UPDATED,
+      EventTypes.VIRTUAL_LEVER_ANIMATION_STARTED,
+      EventTypes.VIRTUAL_LEVER_ANIMATION_STOPPED,
+      EventTypes.VIRTUAL_LEVER_ANIMATION_COMPLETED,
+
       // その他重要なイベント
       EventTypes.DEVICE_CONNECTED,
       EventTypes.DEVICE_DISCONNECTED,

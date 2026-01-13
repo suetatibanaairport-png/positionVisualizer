@@ -188,6 +188,63 @@ function setupUIEvents(app) {
     });
   }
 
+  // ハンバーガーメニューのトグル
+  const hamburgerToggle = document.getElementById('hamburger-toggle');
+  const hamburgerDropdown = document.getElementById('hamburger-dropdown');
+  if (hamburgerToggle && hamburgerDropdown) {
+    logger.debug('Setting up hamburger menu toggle event');
+
+    hamburgerToggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      hamburgerDropdown.classList.toggle('open');
+      logger.debug(`Hamburger menu toggled: ${hamburgerDropdown.classList.contains('open') ? 'open' : 'closed'}`);
+    });
+
+    // 外部クリックで閉じる
+    document.addEventListener('click', (e) => {
+      if (!hamburgerToggle.contains(e.target) && !hamburgerDropdown.contains(e.target)) {
+        if (hamburgerDropdown.classList.contains('open')) {
+          hamburgerDropdown.classList.remove('open');
+          logger.debug('Hamburger menu closed by outside click');
+        }
+      }
+    });
+  }
+
+  // 仮想モードトグルのイベントリスナー
+  const virtualModeToggle = document.getElementById('virtual-mode-toggle');
+  const deviceInputs = document.getElementById('device-inputs');
+  const virtualLeverSettings = document.getElementById('virtual-lever-settings');
+  if (virtualModeToggle && deviceInputs && virtualLeverSettings) {
+    logger.debug('Setting up virtual mode toggle event');
+
+    virtualModeToggle.addEventListener('change', async (e) => {
+      const isVirtualMode = e.target.checked;
+      logger.info(`Virtual mode toggled: ${isVirtualMode ? 'ON' : 'OFF'}`);
+
+      // UIの切り替え
+      deviceInputs.style.display = isVirtualMode ? 'none' : 'block';
+      virtualLeverSettings.style.display = isVirtualMode ? 'block' : 'none';
+
+      // VirtualLeverManagerのモード変更を呼び出す
+      if (app && app.virtualLeverManager) {
+        try {
+          if (isVirtualMode) {
+            await app.virtualLeverManager.enableVirtualMode();
+          } else {
+            await app.virtualLeverManager.disableVirtualMode();
+          }
+        } catch (error) {
+          logger.error('Error toggling virtual mode:', error);
+          // エラー時はトグルを元に戻す
+          e.target.checked = !isVirtualMode;
+          deviceInputs.style.display = !isVirtualMode ? 'none' : 'block';
+          virtualLeverSettings.style.display = !isVirtualMode ? 'block' : 'none';
+        }
+      }
+    });
+  }
+
   // 応答性設定のイベントリスナー
   // トランジション時間
   const transitionTimeInput = document.getElementById('transition-time');

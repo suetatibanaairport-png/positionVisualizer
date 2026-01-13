@@ -10,7 +10,7 @@ body {
   font-weight: 400;
   font-style: normal;
   min-height: 100vh;
-  padding: 20px;
+  padding: 0;
 }
 
 .container {
@@ -24,6 +24,219 @@ body {
   min-height: calc(100vh - 40px);
   align-items: flex-start;
   align-content: flex-start;
+}
+
+/* ========================================
+   新レイアウト: サイドバー + ハンバーガーメニュー
+   ======================================== */
+
+/* アプリ全体レイアウト */
+.app-layout {
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+}
+
+/* 左サイドバー（固定） */
+.sidebar {
+  width: 600px;
+  min-width: 560px;
+  max-width: 700px;
+  height: 100vh;
+  position: fixed;
+  left: 0;
+  top: 0;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  border-right: 1px solid #334155;
+  padding: 20px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  z-index: 100;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.3);
+}
+
+.sidebar h2 {
+  margin: 0 0 20px 0;
+  font-size: 20px;
+  color: #f1f5f9;
+  font-weight: 700;
+  border-bottom: 2px solid #334155;
+  padding-bottom: 12px;
+}
+
+/* サイドバーコントロール */
+.sidebar-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.sidebar-controls .rescan-button {
+  width: 100%;
+  min-width: auto;
+}
+
+.virtual-mode-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: rgba(15, 23, 42, 0.5);
+  border-radius: 8px;
+  border: 1px solid #334155;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  /* toggle-switchのposition: relativeをオーバーライド */
+  position: static;
+  width: auto;
+  height: auto;
+}
+
+.virtual-mode-toggle:hover {
+  background: rgba(15, 23, 42, 0.7);
+  border-color: #475569;
+}
+
+/* 仮想モードトグル内のトグルスイッチ部分 */
+.virtual-mode-toggle .toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 20px;
+  margin-right: 0;
+  flex-shrink: 0;
+}
+
+.virtual-mode-toggle .toggle-label {
+  font-size: 14px;
+  color: #cbd5e1;
+  font-weight: 500;
+  flex: 1;
+  white-space: nowrap;
+}
+
+/* メインコンテンツエリア */
+.main-content {
+  flex: 1;
+  margin-left: 600px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-height: 100vh;
+  width: calc(100% - 600px);
+}
+
+.main-content .visualizer {
+  flex: 1;
+  min-height: 400px;
+  max-height: 60vh;
+}
+
+.main-content .log-sections {
+  width: 100%;
+  flex-shrink: 0;
+}
+
+/* ハンバーガーメニュー */
+.hamburger-menu {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 200;
+}
+
+.hamburger-toggle {
+  width: 44px;
+  height: 44px;
+  font-size: 24px;
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  border: 1px solid #334155;
+  border-radius: 8px;
+  color: #e5e7eb;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  padding: 0;
+  line-height: 1;
+}
+
+.hamburger-toggle:hover {
+  background: linear-gradient(135deg, #334155 0%, #1e293b 100%);
+  border-color: #475569;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  transform: translateY(-1px);
+}
+
+.hamburger-toggle:active {
+  transform: translateY(0);
+}
+
+.hamburger-dropdown {
+  display: none;
+  position: absolute;
+  top: 54px;
+  right: 0;
+  width: 400px;
+  max-width: calc(100vw - 40px);
+  max-height: 80vh;
+  overflow-y: auto;
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  border: 1px solid #334155;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+.hamburger-dropdown.open {
+  display: block;
+  animation: dropdownFadeIn 0.2s ease-out;
+}
+
+@keyframes dropdownFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.hamburger-dropdown::-webkit-scrollbar {
+  width: 8px;
+}
+
+.hamburger-dropdown::-webkit-scrollbar-track {
+  background: #0f172a;
+  border-radius: 4px;
+}
+
+.hamburger-dropdown::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 4px;
+}
+
+.hamburger-dropdown::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+.hamburger-dropdown .range-settings-section {
+  margin-bottom: 16px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  max-width: none;
+}
+
+.hamburger-dropdown .range-settings-section:last-child {
+  margin-bottom: 0;
 }
 
 /* 上段左: デバイス設定 */
@@ -1489,9 +1702,20 @@ button:disabled:hover {
     flex: 1 1 100%;
     max-width: 100%;
   }
-  
+
   .log-sections {
     grid-template-columns: 1fr;
+  }
+
+  /* 新レイアウト用レスポンシブ */
+  .sidebar {
+    width: 500px;
+    min-width: 500px;
+  }
+
+  .main-content {
+    margin-left: 500px;
+    width: calc(100% - 500px);
   }
 }
 
@@ -1519,9 +1743,42 @@ button:disabled:hover {
   button {
     width: 100%;
   }
-  
+
   .range-grid {
     grid-template-columns: 1fr;
+  }
+
+  /* 新レイアウト用レスポンシブ（モバイル） */
+  .app-layout {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    position: relative;
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    border-right: none;
+    border-bottom: 1px solid #334155;
+  }
+
+  .main-content {
+    margin-left: 0;
+    width: 100%;
+    padding: 16px;
+  }
+
+  .hamburger-menu {
+    top: 10px;
+    right: 10px;
+  }
+
+  .hamburger-dropdown {
+    width: calc(100vw - 20px);
+  }
+
+  .main-content .visualizer {
+    max-height: none;
   }
 }
 
@@ -1548,4 +1805,438 @@ button:disabled:hover {
   height: 100%;
   object-fit: cover;
   border-radius: 50%;
+}
+
+/* ==============================
+   仮想レバーコンポーネント スタイル
+   ============================== */
+
+.virtual-lever-manager {
+  background: #1e293b;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.virtual-lever-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.virtual-lever-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+/* トグルスイッチ */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 24px;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #475569;
+  transition: 0.3s;
+  border-radius: 24px;
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: 0.3s;
+  border-radius: 50%;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background-color: #3b82f6;
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+  transform: translateX(26px);
+}
+
+.virtual-lever-description {
+  font-size: 13px;
+  color: #94a3b8;
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+.virtual-lever-list {
+  margin-bottom: 16px;
+}
+
+.no-levers-message {
+  text-align: center;
+  padding: 20px;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.virtual-lever-item {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.lever-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.lever-name-input {
+  flex: 1;
+  background: #1e293b;
+  border: 1px solid #475569;
+  color: #e5e7eb;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  margin-right: 8px;
+}
+
+.lever-name-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.remove-lever-button {
+  background: #ef4444;
+  border: none;
+  color: white;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: background 0.2s;
+}
+
+.remove-lever-button:hover {
+  background: #dc2626;
+}
+
+.lever-item-config {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.config-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.config-row label {
+  font-size: 12px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.config-row input[type="number"] {
+  background: #1e293b;
+  border: 1px solid #475569;
+  color: #e5e7eb;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.config-row input[type="number"]:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.device-badge {
+  grid-column: 1 / -1;
+  display: inline-block;
+  background: #3b82f6;
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  width: fit-content;
+  margin-top: 8px;
+}
+
+.add-lever-button {
+  width: 100%;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.add-lever-button:hover {
+  background: #2563eb;
+}
+
+.animation-controls {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.start-animation-button,
+.stop-animation-button {
+  width: 100%;
+  border: none;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.start-animation-button {
+  background: #10b981;
+  color: white;
+}
+
+.start-animation-button:hover {
+  background: #059669;
+}
+
+.stop-animation-button {
+  background: #ef4444;
+  color: white;
+}
+
+.stop-animation-button:hover {
+  background: #dc2626;
+}
+
+.reset-animation-button {
+  background: #f59e0b;
+  color: white;
+}
+
+.reset-animation-button:hover {
+  background: #d97706;
+}
+
+.animation-status {
+  text-align: center;
+  padding: 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #94a3b8;
+}
+
+.animation-status.active {
+  background: #0f172a;
+  color: #10b981;
+  font-weight: 600;
+}
+
+/* セグメント関連のスタイル */
+.segments-container {
+  margin-top: 12px;
+}
+
+/* 仮想レバーのセグメント設定を device-content-column 内に配置 */
+.device-group.virtual-lever-item .segments-container {
+  margin-top: 12px;
+  border-top: 1px solid #334155;
+  padding-top: 12px;
+  width: 100%;
+}
+
+/* セグメントコンテナの幅を100%に */
+.device-group .segments-container {
+  width: 100%;
+}
+
+/* ==============================
+   セグメント一括トグルボタン
+   ============================== */
+
+.segment-bulk-controls {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.expand-all-btn,
+.collapse-all-btn {
+  flex: 1;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  min-width: auto;
+}
+
+.expand-all-btn {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  border: 1px solid #059669;
+  color: white;
+}
+
+.expand-all-btn:hover {
+  background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
+}
+
+.collapse-all-btn {
+  background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
+  border: 1px solid #4b5563;
+  color: white;
+}
+
+.collapse-all-btn:hover {
+  background: linear-gradient(135deg, #9ca3af 0%, #6b7280 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(107, 114, 128, 0.3);
+}
+
+/* ==============================
+   セグメントアコーディオン
+   ============================== */
+
+/* セグメントセクションヘッダー */
+.segments-section-header {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  background: rgba(30, 41, 59, 0.4);
+  border: 1px solid #475569;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  transition: all 0.2s ease;
+}
+
+.segments-section-header:hover {
+  background: rgba(30, 41, 59, 0.6);
+  border-color: #64748b;
+}
+
+.segment-toggle-icon {
+  font-size: 12px;
+  margin-right: 8px;
+  transition: transform 0.2s ease;
+  color: #94a3b8;
+  display: inline-block;
+  min-width: 12px;
+}
+
+.segments-section-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #cbd5e1;
+}
+
+/* セグメントセクションコンテンツ */
+.segments-section-content {
+  display: none;
+  margin-top: 8px;
+}
+
+/* 展開状態 */
+.segments-container.expanded .segments-section-content {
+  display: block;
+}
+
+/* 折り畳み状態（デフォルト） */
+.segments-container.collapsed .segments-section-content {
+  display: none;
+}
+
+.segment-item {
+  background: rgba(30, 41, 59, 0.5);
+  border: 1px solid #475569;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 8px;
+}
+
+.segment-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #5FADCF;
+}
+
+.segment-config {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.delete-segment-button {
+  background: transparent;
+  border: 1px solid #dc2626;
+  color: #dc2626;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  min-width: auto;
+  transition: all 0.2s ease;
+}
+
+.delete-segment-button:hover {
+  background: rgba(220, 38, 38, 0.1);
+  color: #ef4444;
+  border-color: #ef4444;
+}
+
+.add-segment-button {
+  width: 100%;
+  margin-top: 8px;
+  background: linear-gradient(135deg, #475569 0%, #334155 100%);
+  border: 1px dashed #64748b;
+  color: #94a3b8;
+  padding: 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.add-segment-button:hover {
+  background: linear-gradient(135deg, #5FADCF 0%, #4a8fb8 100%);
+  border-style: solid;
+  color: white;
 }
