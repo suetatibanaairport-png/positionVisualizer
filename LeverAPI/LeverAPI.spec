@@ -4,7 +4,7 @@ from PyInstaller.utils.hooks import collect_all
 
 datas = []
 binaries = []
-hiddenimports = ['engineio.async_drivers.threading', 'api.discovery', 'api.device_manager', 'api.transformers', 'api.cache']
+hiddenimports = ['requests', 'engineio.async_drivers.threading', 'api.discovery', 'api.device_manager', 'api.transformers', 'api.cache']
 hiddenimports += collect_submodules('dns')
 tmp_ret = collect_all('orjson')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
