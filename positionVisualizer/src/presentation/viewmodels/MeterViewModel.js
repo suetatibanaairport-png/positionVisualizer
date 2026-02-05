@@ -40,6 +40,9 @@ export class MeterViewModel {
     // 再生モードフラグ
     this.isPlaybackMode = false;
 
+    // 仮想レバーモードフラグ
+    this.isVirtualMode = false;
+
     // 初期状態
     this.state = {
       values: Array(this.options.maxDevices).fill(null),        // デバイス値
@@ -73,6 +76,17 @@ export class MeterViewModel {
         return;
       }
 
+      // 仮想レバーモード中の処理
+      if (this.isVirtualMode) {
+        // 仮想レバーからの値のみ受け入れる
+        if (event.isVirtual) {
+          this.logger.debug(`仮想レバー値更新: ${event.deviceId}`);
+        } else {
+          this.logger.debug(`仮想レバーモード中のため実デバイスデータを無視: ${event.deviceId}`);
+          return;
+        }
+      }
+
       const deviceId = event.deviceId;
       const deviceIndex = this.getOrAssignDeviceIndex(deviceId);
 
@@ -80,7 +94,13 @@ export class MeterViewModel {
         // 通常のデバイス値更新の場合
         this.logger.debug(`デバイス値更新イベント: ${deviceId}, インデックス: ${deviceIndex}`);
         const value = this._extractNormalizedValue(event.value);
-        this.setValue(deviceIndex, value, true, 'device');
+        const source = event.isVirtual ? 'virtual' : 'device';
+        this.setValue(deviceIndex, value, true, source);
+
+        // 仮想レバーの場合、表示状態も更新
+        if (event.isVirtual && event.visible !== undefined) {
+          this.setVisible(deviceIndex, event.visible);
+        }
       }
     });
 
@@ -132,6 +152,17 @@ export class MeterViewModel {
     this.eventEmitter.on('playbackModeChanged', (event) => {
       this.isPlaybackMode = event.isPlaybackMode;
       this.logger.debug(`再生モード状態を同期: ${this.isPlaybackMode}`);
+    });
+
+    // 仮想モード状態管理（メイン・オーバーレイ両方で監視）
+    this.eventEmitter.on(EventTypes.VIRTUAL_LEVER_MODE_ENABLED, () => {
+      this.logger.debug('仮想レバーモード有効化イベントを受信しました');
+      this.isVirtualMode = true;
+    });
+
+    this.eventEmitter.on(EventTypes.VIRTUAL_LEVER_MODE_DISABLED, () => {
+      this.logger.debug('仮想レバーモード無効化イベントを受信しました');
+      this.isVirtualMode = false;
     });
 
     // 記録用: デバイスマッピングのリクエストに応答
@@ -316,14 +347,17 @@ export class MeterViewModel {
     }
 
     // ノイズ除去（平滑化）を適用
+    // 仮想レバーからの値は平滑化をスキップ（正確な初期値を保持するため）
     let smoothedValue = value;
-    if (this.options.enableSmoothing && this.state.values[index] !== null) {
+    if (source !== 'virtual' && this.options.enableSmoothing && this.state.values[index] !== null) {
       smoothedValue = ValueCalculator.smoothValue(
         this.state.values[index],
         value,
         this.options.smoothingFactor
       );
       this.logger.debug(`Applied smoothing for device ${index}: ${value} -> ${smoothedValue}`);
+    } else if (source === 'virtual') {
+      this.logger.debug(`Skipping smoothing for virtual lever device ${index}: ${value}`);
     }
 
     // 値の変化が小さい場合は即時更新
@@ -397,6 +431,15 @@ export class MeterViewModel {
       return true;
     }
     return false;
+  }
+
+  /**
+   * 仮想レバーモードの設定
+   * @param {boolean} enabled 仮想モードを有効化するかどうか
+   */
+  setVirtualMode(enabled) {
+    this.isVirtualMode = enabled;
+    this.logger.info(`仮想レバーモードを${enabled ? '有効化' : '無効化'}しました`);
   }
 
   /**

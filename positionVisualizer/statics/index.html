@@ -21,186 +21,129 @@
         s.parentNode.insertBefore(tk,s)
       })(document);
     </script>
-    <style>
-      /* Fallback styles */
-      .container{
-        display:flex;
-        flex-wrap:wrap;
-        gap:20px;
-        align-items:flex-start;
-        justify-content:center;
-        padding:10px;
-        max-width:100%;
-        min-height:calc(100vh - 40px);
-        margin:0 auto;
-        box-sizing: border-box;
-      }
-      .controls{flex:0 1 calc(50% - 10px);min-width:300px;max-width:500px;height:480px;border:1px solid #334155;padding:20px;border-radius:16px}
-      .visualizer{flex:1 1 calc(50% - 10px);min-width:300px;max-width:740px;height:480px;border:1px solid #334155;padding:20px;border-radius:16px;min-height:400px;display:flex;flex-direction:column}
-      .range-settings-section{flex:0 1 calc(50% - 10px);min-width:300px;max-width:500px;border:1px solid #334155;padding:16px;border-radius:16px}
-      .log-sections{flex:1 1 calc(50% - 10px);min-width:300px;max-width:740px;border:1px solid #334155;padding:16px;border-radius:16px}
-      .meter-container{position:relative;width:100%;max-width:980px;margin:0 auto;aspect-ratio:16/9;flex:1}
-      #icons-container{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
-      button{cursor:pointer}
-
-      /* オーバーレイボタン用スタイル */
-      .visualizer-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 16px;
-        width: 100%;
-        flex-wrap: wrap;
-        gap: 10px;
-      }
-      .visualizer-title {
-        margin: 0;
-        font-size: 20px;
-        font-weight: 600;
-        flex: 1;
-        min-width: 120px;
-      }
-      .overlay-button {
-        background-color: #334155;
-        color: white;
-        border: none;
-        border-radius: 6px;
-        padding: 8px 14px;
-        font-size: 14px;
-        font-weight: 500;
-        transition: all 0.2s;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        white-space: nowrap;
-        line-height: 1.2;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        min-width: 140px;
-      }
-      .overlay-button:hover {
-        background-color: #1e293b;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.15);
-      }
-
-      /* レスポンシブ対応 */
-      @media (max-width: 768px) {
-        .container {
-          padding: 8px;
-          gap: 12px;
-        }
-      }
-
-      @media (max-width: 500px) {
-        .visualizer-header {
-          flex-direction: column;
-          align-items: flex-start;
-        }
-        .visualizer-title {
-          margin-bottom: 8px;
-        }
-        .overlay-button {
-          width: 100%;
-        }
-        .visualizer, .controls, .range-settings-section, .log-sections {
-          padding: 15px;
-        }
-      }
-    </style>
     <script>
       // キャッシュクリア用のビルドクエリ
       window.__buildTs = Date.now();
     </script>
 </head>
 <body>
-    <div class="container">
-        <div class="controls">
+    <!-- ハンバーガーメニュー -->
+    <div class="hamburger-menu">
+        <button class="hamburger-toggle" id="hamburger-toggle" title="設定メニューを開く">≡</button>
+        <div class="hamburger-dropdown" id="hamburger-dropdown">
+            <!-- 値の範囲設定 -->
+            <div class="range-settings-section">
+                <h3>値の範囲設定</h3>
+                <div class="range-grid">
+                    <div class="device-group">
+                        <label>最小値</label>
+                        <input type="number" id="min-value" value="0" step="0.1">
+                    </div>
+                    <div class="device-group">
+                        <label>最大値</label>
+                        <input type="number" id="max-value" value="100" step="0.1">
+                    </div>
+                    <div class="device-group">
+                        <label>単位</label>
+                        <input type="text" id="value-unit" value="%" placeholder="例: %, °, kg">
+                    </div>
+                    <div class="device-group">
+                        <label>最大デバイス数</label>
+                        <input type="number" id="max-devices" value="6" min="1" max="20" step="1">
+                        <span class="input-description">表示するレバーデバイスの最大数</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 応答性設定 -->
+            <div class="range-settings-section">
+                <h3>応答性設定</h3>
+                <div class="range-grid">
+                    <div class="device-group">
+                        <label>トランジション時間</label>
+                        <input type="range" id="transition-time" min="0.01" max="0.2" step="0.01" value="0.05">
+                        <span id="transition-time-value">0.05秒</span>
+                        <span class="input-description">アニメーションの滑らかさ（小さいほど即応的）</span>
+                    </div>
+                    <div class="device-group">
+                        <label>平滑化係数</label>
+                        <input type="range" id="smoothing-factor" min="0.5" max="1.0" step="0.01" value="0.95">
+                        <span id="smoothing-factor-value">0.95</span>
+                        <span class="input-description">値の平滑化強度（大きいほど即応的）</span>
+                    </div>
+                    <div class="device-group">
+                        <label>補間時間</label>
+                        <input type="range" id="interpolation-time" min="10" max="100" step="5" value="16">
+                        <span id="interpolation-time-value">16ms</span>
+                        <span class="input-description">値の補間時間（小さいほど即応的）</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="app-layout">
+        <!-- 左サイドバー -->
+        <aside class="sidebar">
             <h2>デバイス設定</h2>
-            <button id="rescan-devices" class="rescan-button" title="デバイスを再スキャン">
-                🔍 デバイスを再スキャン
-            </button>
+            <div class="sidebar-controls">
+                <button id="rescan-devices" class="rescan-button" title="デバイスを再スキャン">
+                    🔍 デバイスを再スキャン
+                </button>
+                <label class="virtual-mode-toggle" title="仮想レバーモード">
+                    <span class="toggle-switch">
+                        <input type="checkbox" id="virtual-mode-toggle" />
+                        <span class="toggle-slider"></span>
+                    </span>
+                    <span class="toggle-label">仮想モード</span>
+                </label>
+            </div>
+
+            <!-- デバイスリスト -->
             <div id="device-inputs" class="device-inputs">
-                <!-- デバイスリストが動的に生成されます -->
                 <div id="no-devices-message" class="no-devices-message">デバイスが接続されていません</div>
             </div>
-        </div>
 
-        <div class="visualizer">
-            <div class="visualizer-header">
-                <h2 class="visualizer-title">プレビュー</h2>
-                <div class="header-buttons">
-                    <button id="clear-all-devices" class="overlay-button danger-button" title="全デバイスを削除">
-                        全デバイス削除
-                    </button>
-                    <button id="reset-devices" class="overlay-button reset-button" title="デバイスリストをリセット">
-                        レバー表示をリセット
-                    </button>
-                    <button id="open-overlay" class="overlay-button" title="オーバーレイウィンドウを開く">
-                        オーバーレイを開く
-                    </button>
-                </div>
+            <!-- 仮想レバー設定（初期非表示） -->
+            <div id="virtual-lever-settings" class="virtual-lever-settings" style="display: none;">
+                <!-- VirtualLeverManagerComponentによって内部が構築されます -->
             </div>
-            <div class="meter-container" id="meter-container">
-                <div id="icons-container"></div>
-            </div>
-        </div>
-        <div class="range-settings-section">
-            <h3>値の範囲設定</h3>
-            <div class="range-grid">
-                <div class="device-group">
-                    <label>最小値</label>
-                    <input type="number" id="min-value" value="0" step="0.1">
-                </div>
-                <div class="device-group">
-                    <label>最大値</label>
-                    <input type="number" id="max-value" value="100" step="0.1">
-                </div>
-                <div class="device-group">
-                    <label>単位</label>
-                    <input type="text" id="value-unit" value="%" placeholder="例: %, °, kg">
-                </div>
-                <div class="device-group">
-                    <label>最大デバイス数</label>
-                    <input type="number" id="max-devices" value="6" min="1" max="20" step="1">
-                    <span class="input-description">表示するレバーデバイスの最大数</span>
-                </div>
-            </div>
-        </div>
+        </aside>
 
-        <!-- 応答性設定セクション -->
-        <div class="range-settings-section">
-            <h3>応答性設定</h3>
-            <div class="range-grid">
-                <div class="device-group">
-                    <label>トランジション時間</label>
-                    <input type="range" id="transition-time" min="0.01" max="0.2" step="0.01" value="0.05">
-                    <span id="transition-time-value">0.05秒</span>
-                    <span class="input-description">アニメーションの滑らかさ（小さいほど即応的）</span>
+        <!-- メインコンテンツエリア -->
+        <main class="main-content">
+            <!-- プレビュー -->
+            <div class="visualizer">
+                <div class="visualizer-header">
+                    <h2 class="visualizer-title">プレビュー</h2>
+                    <div class="header-buttons">
+                        <button id="clear-all-devices" class="overlay-button danger-button" title="全デバイスを削除">
+                            全デバイス削除
+                        </button>
+                        <button id="reset-devices" class="overlay-button reset-button" title="デバイスリストをリセット">
+                            レバー表示をリセット
+                        </button>
+                        <button id="open-overlay" class="overlay-button" title="オーバーレイウィンドウを開く">
+                            オーバーレイを開く
+                        </button>
+                    </div>
                 </div>
-                <div class="device-group">
-                    <label>平滑化係数</label>
-                    <input type="range" id="smoothing-factor" min="0.5" max="1.0" step="0.01" value="0.95">
-                    <span id="smoothing-factor-value">0.95</span>
-                    <span class="input-description">値の平滑化強度（大きいほど即応的）</span>
+                <div class="meter-container" id="meter-container">
+                    <div id="icons-container"></div>
                 </div>
-                <div class="device-group">
-                    <label>補間時間</label>
-                    <input type="range" id="interpolation-time" min="10" max="100" step="5" value="16">
-                    <span id="interpolation-time-value">16ms</span>
-                    <span class="input-description">値の補間時間（小さいほど即応的）</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- ログ管理セクション - LogManagerComponentで管理 -->
-        <div class="log-sections">
-            <!-- 新しいログ管理コンポーネント用のコンテナ -->
-            <div id="log-manager-container">
-                <!-- LogManagerComponentによって内部が構築されます -->
             </div>
 
-            <!-- 再生コントロールのコンテナ -->
-            <div id="playback-controls-container"></div>
-        </div>
+            <!-- ログ管理 -->
+            <div class="log-sections">
+                <!-- ログ管理コンポーネント -->
+                <div id="log-manager-container">
+                    <!-- LogManagerComponentによって内部が構築されます -->
+                </div>
+
+                <!-- 再生コントロール -->
+                <div id="playback-controls-container"></div>
+            </div>
+        </main>
     </div>
 
     <script>

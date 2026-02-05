@@ -11,6 +11,7 @@ import { DeviceConnectionManager } from '../managers/DeviceConnectionManager.js'
 import { SessionManager } from '../managers/SessionManager.js';
 import { DeviceSettingsManager } from '../managers/DeviceSettingsManager.js';
 import { UIComponentManager } from '../managers/UIComponentManager.js';
+import { VirtualLeverManager } from '../managers/VirtualLeverManager.js';
 
 /**
  * アプリケーションコントローラークラス
@@ -34,6 +35,7 @@ export class AppController {
     this.replaySessionUseCase = dependencies.replaySessionUseCase || null;
     this.logService = dependencies.logService || null;
     this.settingsRepository = dependencies.settingsRepository || null;
+    this.virtualLeverService = dependencies.virtualLeverService || null;
 
     // 内部状態
     this.monitoringEnabled = false;
@@ -105,6 +107,16 @@ export class AppController {
       this.logger
     );
 
+    // VirtualLeverManager
+    if (this.virtualLeverService) {
+      this.virtualLeverManager = new VirtualLeverManager(
+        this.virtualLeverService,
+        this.meterViewModel,
+        this.eventEmitter,
+        this.logger
+      );
+    }
+
     // Manager間のコールバック設定
     this._setupManagerCallbacks();
   }
@@ -165,6 +177,7 @@ export class AppController {
       meterViewModel: this.meterViewModel,
       meterRenderer: this.meterRenderer,
       deviceService: this.deviceService,
+      virtualLeverManager: this.virtualLeverManager,
       logService: this.logService,
       replaySessionUseCase: this.replaySessionUseCase,
       appController: this
@@ -209,6 +222,12 @@ export class AppController {
 
       // 5. ログ管理コンポーネントの初期化（UIComponentManagerに委譲）
       this.uiComponentManager.initializeLogComponents();
+
+      // 6. 仮想レバーコンポーネントの初期化
+      if (this.virtualLeverService) {
+        await this.virtualLeverService.initialize();
+        this.uiComponentManager.initializeVirtualLeverComponents();
+      }
 
       // アプリケーション起動イベントを発行
       if (this.eventEmitter) {

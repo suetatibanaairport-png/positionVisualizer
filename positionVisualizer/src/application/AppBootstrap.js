@@ -13,11 +13,13 @@ import { DeviceRepository } from '../infrastructure/repositories/DeviceRepositor
 import { ValueRepository } from '../infrastructure/repositories/ValueRepository.js';
 import { SettingsRepository } from '../infrastructure/repositories/SettingsRepository.js';
 import { LogSessionRepository } from '../infrastructure/repositories/LogSessionRepository.js';
+import { VirtualLeverRepository } from '../infrastructure/repositories/VirtualLeverRepository.js';
 import { OverlaySyncService } from '../infrastructure/services/OverlaySyncService.js';
 
 // アプリケーション層
 import { DeviceService } from './services/DeviceService.js';
 import { LogService } from './services/log/LogService.js';
+import { VirtualLeverService } from './services/VirtualLeverService.js';
 import { MonitorValuesUseCase } from './usecases/MonitorValuesUseCase.js';
 import { RecordSessionUseCase } from './usecases/RecordSessionUseCase.js';
 import { LogReplayUseCase } from './usecases/LogReplayUseCase.js';
@@ -117,6 +119,7 @@ class AppBootstrap {
     const valueRepository = new ValueRepository(storageAdapter);
     const settingsRepository = new SettingsRepository(storageAdapter);
     const logSessionRepository = new LogSessionRepository(storageAdapter);
+    const virtualLeverRepository = new VirtualLeverRepository(storageAdapter);
 
     // イベントバスとロガーのアダプターを作成
     const eventBusAdapter = new EventBusAdapter();
@@ -138,6 +141,7 @@ class AppBootstrap {
       valueRepository,
       settingsRepository,
       logSessionRepository,
+      virtualLeverRepository,
       eventBus: eventBusAdapter,
       logger: loggerAdapter,
       overlaySyncService
@@ -159,6 +163,7 @@ class AppBootstrap {
     const recordSessionLogger = new LoggerAdapter('RecordSessionUseCase');
     const replaySessionLogger = new LoggerAdapter('LogReplayUseCase');
     const logServiceLogger = new LoggerAdapter('LogService');
+    const virtualLeverServiceLogger = new LoggerAdapter('VirtualLeverService');
 
     // サービス（依存性注入）
     const deviceService = new DeviceService(
@@ -209,12 +214,22 @@ class AppBootstrap {
       logServiceLogger
     );
 
+    // 仮想レバーサービス（依存性注入）
+    const virtualLeverService = new VirtualLeverService(
+      deviceService,
+      infraComponents.valueRepository,
+      infraComponents.virtualLeverRepository,
+      infraComponents.eventBus,
+      virtualLeverServiceLogger
+    );
+
     return {
       deviceService,
       monitorUseCase,
       recordSessionUseCase,
       replaySessionUseCase,
-      logService
+      logService,
+      virtualLeverService
     };
   }
 
@@ -305,6 +320,7 @@ class AppBootstrap {
       recordSessionUseCase: applicationComponents.recordSessionUseCase,
       replaySessionUseCase: applicationComponents.replaySessionUseCase,
       logService: applicationComponents.logService,
+      virtualLeverService: applicationComponents.virtualLeverService,
 
       // プレゼンテーション層
       meterViewModel: presentationComponents.meterViewModel,

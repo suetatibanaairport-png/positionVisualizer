@@ -6,6 +6,7 @@
 import { LogManagerComponent } from '../components/log/LogManagerComponent.js';
 import { PlaybackControlsComponent } from '../components/log/PlaybackControlsComponent.js';
 import { DeviceListViewModel } from '../viewmodels/DeviceListViewModel.js';
+import { VirtualLeverManagerComponent } from '../components/virtualLever/VirtualLeverManagerComponent.js';
 import { EventTypes } from '../../domain/events/EventTypes.js';
 
 /**
@@ -26,6 +27,7 @@ export class UIComponentManager {
     // UIコンポーネント
     this.logManagerComponent = null;
     this.playbackControlsComponent = null;
+    this.virtualLeverManagerComponent = null;
     this.deviceListViewModel = null;
 
     // 外部依存（後から設定）
@@ -34,6 +36,7 @@ export class UIComponentManager {
     this.deviceService = null;
     this.logService = null;
     this.replaySessionUseCase = null;
+    this.virtualLeverManager = null;
     this.appController = null;
 
     // コールバック
@@ -51,7 +54,36 @@ export class UIComponentManager {
     this.deviceService = dependencies.deviceService;
     this.logService = dependencies.logService;
     this.replaySessionUseCase = dependencies.replaySessionUseCase;
+    this.virtualLeverManager = dependencies.virtualLeverManager;
     this.appController = dependencies.appController;
+  }
+
+  /**
+   * 仮想レバーコンポーネントの初期化
+   */
+  initializeVirtualLeverComponents() {
+    if (!this.virtualLeverManager) {
+      this.logger.debug('Virtual lever components cannot be initialized: missing dependencies');
+      return;
+    }
+
+    this.logger.debug('Initializing virtual lever components');
+
+    try {
+      const containerId = 'virtual-lever-settings';
+      if (document.getElementById(containerId)) {
+        this.logger.debug('Initializing VirtualLeverManagerComponent');
+        this.virtualLeverManagerComponent = new VirtualLeverManagerComponent(
+          containerId,
+          this.virtualLeverManager,
+          this.eventEmitter
+        );
+      } else {
+        this.logger.debug(`VirtualLeverManagerComponent container not found: ${containerId}`);
+      }
+    } catch (error) {
+      this.logger.error('Error initializing virtual lever components:', error);
+    }
   }
 
   /**

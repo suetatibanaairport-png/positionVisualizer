@@ -40,6 +40,12 @@ export class RecordSessionUseCase {
     this.entries = [];
     this.autoStopTimer = null;
     this.deviceValueSubscriptions = new Map();
+
+    // 仮想モード状態
+    this.isVirtualMode = false;
+
+    // 仮想モード状態の監視
+    this._setupVirtualModeTracking();
   }
 
   /**
@@ -66,13 +72,15 @@ export class RecordSessionUseCase {
 
     this.logger.info(`記録セッションを開始します: ${sessionId}`);
 
-    // 初期値があれば記録
-    if (initialValues && Object.keys(initialValues).length > 0) {
+    // 初期値があれば記録（仮想モード中は実デバイスの初期値をスキップ）
+    if (initialValues && Object.keys(initialValues).length > 0 && !this.isVirtualMode) {
       this.logger.debug(`初期値を記録します: デバイス数=${Object.keys(initialValues).length}`);
       for (const deviceId in initialValues) {
         const value = initialValues[deviceId];
         this.recordDeviceData(deviceId, value);
       }
+    } else if (this.isVirtualMode) {
+      this.logger.debug('仮想モード中のため実デバイス初期値をスキップします');
     } else {
       this.logger.debug('初期値はありません');
     }
@@ -103,8 +111,12 @@ export class RecordSessionUseCase {
     // 最大記録時間を設定
     this._setupAutoStop();
 
-    // ポーリング機能を開始（イベント監視の補完として）
-    this.startPolling();
+    // ポーリング機能を開始（仮想モード中はスキップ）
+    if (!this.isVirtualMode) {
+      this.startPolling();
+    } else {
+      this.logger.debug('仮想モード中のためポーリングをスキップします');
+    }
 
     // イベント通知
     this.logger.debug('RECORDING_STARTED イベントを発行します');
@@ -201,9 +213,10 @@ export class RecordSessionUseCase {
    * デバイスデータを記録
    * @param {string} deviceId デバイスID
    * @param {Object} value デバイス値
+   * @param {boolean} isVirtual 仮想レバーからの値かどうか（デフォルト: false）
    * @returns {boolean} 成功したかどうか
    */
-  recordDeviceData(deviceId, value) {
+  recordDeviceData(deviceId, value, isVirtual = false) {
     if (!this.isRecording) {
       this.logger.debug(`記録できません: アクティブな記録セッションがありません (deviceId: ${deviceId})`);
       return false;
@@ -211,6 +224,16 @@ export class RecordSessionUseCase {
 
     if (!deviceId) {
       this.logger.warn('デバイスIDが無効なため記録できません');
+      return false;
+    }
+
+    // 仮想モードと値のソースに基づくフィルタリング
+    if (this.isVirtualMode && !isVirtual) {
+      this.logger.debug(`仮想モード中のため実デバイス値を無視: ${deviceId}`);
+      return false;
+    }
+    if (!this.isVirtualMode && isVirtual) {
+      this.logger.debug(`通常モード中のため仮想レバー値を無視: ${deviceId}`);
       return false;
     }
 
@@ -447,8 +470,13 @@ export class RecordSessionUseCase {
 
       this.logger.debug(`deviceUpdated/DEVICE_UPDATED イベント受信: ${event.deviceId}`);
 
+      // 仮想モード状態に基づいてフィルタリング
+      if (!this._shouldRecordValue(event)) {
+        return;
+      }
+
       if (event.value) {
-        this.recordDeviceData(event.deviceId, event.value);
+        this.recordDeviceData(event.deviceId, event.value, event.isVirtual === true);
       }
     };
 
@@ -460,10 +488,15 @@ export class RecordSessionUseCase {
     this.boundHandleDeviceValueUpdated = (event) => {
       if (!event || !event.deviceId) return;
 
-      this.logger.debug(`deviceValueUpdated/DEVICE_VALUE_UPDATED イベント受信: ${event.deviceId}`);
+      this.logger.debug(`deviceValueUpdated/DEVICE_VALUE_UPDATED イベント受信: ${event.deviceId}, isVirtual: ${event.isVirtual || false}`);
+
+      // 仮想モード状態に基づいてフィルタリング
+      if (!this._shouldRecordValue(event)) {
+        return;
+      }
 
       if (event.value) {
-        this.recordDeviceData(event.deviceId, event.value);
+        this.recordDeviceData(event.deviceId, event.value, event.isVirtual === true);
       }
     };
 
@@ -521,7 +554,7 @@ export class RecordSessionUseCase {
   _handleDeviceValueChanged(event) {
     if (!event || !event.deviceId) return;
 
-    this.logger.debug(`デバイス値変更イベント受信: ${event.deviceId}, タイムスタンプ: ${event.timestamp || 'なし'}`);
+    this.logger.debug(`デバイス値変更イベント受信: ${event.deviceId}, タイムスタンプ: ${event.timestamp || 'なし'}, isVirtual: ${event.isVirtual || false}`);
 
     // 記録中でない場合は処理しない
     if (!this.isRecording) {
@@ -529,21 +562,24 @@ export class RecordSessionUseCase {
       return;
     }
 
-    // 再生モード関連のチェックを削除（イベントタイプで区別する方式に変更）
+    // 仮想モード状態に基づいてフィルタリング
+    if (!this._shouldRecordValue(event)) {
+      return;
+    }
 
     try {
       // 値の有無を確認
       if (event.value) {
         this.logger.debug(`デバイス値変更を検出: ${event.deviceId}, 値: ${JSON.stringify(event.value)}`);
-        this.recordDeviceData(event.deviceId, event.value);
+        this.recordDeviceData(event.deviceId, event.value, event.isVirtual === true);
       } else if (event.previousValue) {
         // 値がない場合は前回の値を使用
         this.logger.debug(`デバイス値変更を検出 (前回値を使用): ${event.deviceId}, 前回値: ${JSON.stringify(event.previousValue)}`);
-        this.recordDeviceData(event.deviceId, event.previousValue);
+        this.recordDeviceData(event.deviceId, event.previousValue, event.isVirtual === true);
       } else {
         // 何も値がない場合はデバイスIDのみで記録
         this.logger.debug(`デバイス値なしで変更を検出: ${event.deviceId}`);
-        this.recordDeviceData(event.deviceId, { rawValue: null, normalizedValue: null });
+        this.recordDeviceData(event.deviceId, { rawValue: null, normalizedValue: null }, event.isVirtual === true);
       }
 
       this.logger.debug(`デバイス値変更イベント処理完了: ${event.deviceId}, 現在のエントリ数: ${this.entries.length}`);
@@ -691,5 +727,63 @@ export class RecordSessionUseCase {
       clearInterval(this.pollingInterval);
       this.pollingInterval = null;
     }
+  }
+
+  /**
+   * 仮想モード状態の追跡をセットアップ
+   * @private
+   */
+  _setupVirtualModeTracking() {
+    // 仮想モード有効化イベント
+    this.eventBus.on(EventTypes.VIRTUAL_LEVER_MODE_ENABLED, () => {
+      this.isVirtualMode = true;
+      this.logger.info('仮想レバーモードが有効化されました（記録対象: 仮想レバー値のみ）');
+
+      // 仮想モード中はポーリングを停止（仮想レバーはイベントベースで値を発行するため）
+      if (this.isRecording) {
+        this.stopPolling();
+        this.logger.debug('仮想モード中のためポーリングを停止しました');
+      }
+    });
+
+    // 仮想モード無効化イベント
+    this.eventBus.on(EventTypes.VIRTUAL_LEVER_MODE_DISABLED, () => {
+      this.isVirtualMode = false;
+      this.logger.info('仮想レバーモードが無効化されました（記録対象: 実デバイス値のみ）');
+
+      // 仮想モード解除後、記録中ならポーリングを再開
+      if (this.isRecording) {
+        this.startPolling();
+        this.logger.debug('仮想モード解除のためポーリングを再開しました');
+      }
+    });
+
+    this.logger.debug('仮想モード状態の追跡を設定しました');
+  }
+
+  /**
+   * 値が記録対象かどうかを判定
+   * @param {Object} event イベントデータ
+   * @returns {boolean} 記録対象の場合true
+   * @private
+   */
+  _shouldRecordValue(event) {
+    const isVirtualValue = event.isVirtual === true;
+
+    if (this.isVirtualMode) {
+      // 仮想モード中は仮想レバーの値のみ記録
+      if (!isVirtualValue) {
+        this.logger.debug(`仮想モード中のため実デバイス値を無視: ${event.deviceId}`);
+        return false;
+      }
+    } else {
+      // 通常モード中は実デバイスの値のみ記録
+      if (isVirtualValue) {
+        this.logger.debug(`通常モード中のため仮想レバー値を無視: ${event.deviceId}`);
+        return false;
+      }
+    }
+
+    return true;
   }
 }
