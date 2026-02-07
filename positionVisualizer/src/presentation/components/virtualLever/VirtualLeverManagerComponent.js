@@ -276,7 +276,74 @@ export class VirtualLeverManagerComponent {
     iconButton.className = 'icon-button';
     iconButton.textContent = 'アイコン設定';
     iconButton.title = 'アイコンを設定';
-    // TODO: アイコン設定機能の実装
+    buttonGroup.appendChild(iconButton);
+
+    // ファイル入力（隠す）
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'image/*';
+    fileInput.className = 'icon-file-input';
+    fileInput.style.display = 'none';
+    fileInput.setAttribute('data-lever-id', lever.id);
+
+    // アイコンボタンクリックでファイル選択ダイアログ
+    iconButton.addEventListener('click', () => {
+      fileInput.click();
+    });
+
+    // ファイル選択時の処理
+    fileInput.addEventListener('change', (event) => {
+      if (!event.target.files || !event.target.files[0]) return;
+
+      const file = event.target.files[0];
+      const leverId = fileInput.getAttribute('data-lever-id');
+
+      if (!leverId) return;
+
+      // FileReader APIを使用してファイルを読み込み
+      const reader = new FileReader();
+
+      reader.onload = (e) => {
+        try {
+          const dataUrl = e.target.result;
+
+          // 画像のサイズを確認（大きすぎる場合は警告）
+          const size = dataUrl.length;
+
+          if (size > 1024 * 1024) { // 1MB以上
+            alert('ファイルサイズが大きすぎます（1MB以下にしてください）');
+            return;
+          }
+
+          // レバーのiconUrlを更新
+          this._onLeverUpdate(leverId, { iconUrl: dataUrl });
+
+          // パネル内のアイコン表示を即座に更新
+          const iconDisplay = item.querySelector('.device-icon-display');
+          if (iconDisplay) {
+            iconDisplay.src = dataUrl;
+          }
+
+          // メーター表示にも反映（DEVICE_ICON_CHANGEDイベント発行）
+          this.eventBus.emit(EventTypes.DEVICE_ICON_CHANGED, {
+            deviceId: leverId,
+            iconUrl: dataUrl
+          });
+
+        } catch (error) {
+          console.error(`Error processing icon file for lever ${leverId}:`, error);
+          alert('アイコンファイルの処理中にエラーが発生しました');
+        }
+      };
+
+      reader.onerror = () => {
+        console.error(`Error reading icon file for lever ${leverId}`);
+        alert('アイコンファイルの読み込み中にエラーが発生しました');
+      };
+
+      // ファイルをデータURLとして読み込み
+      reader.readAsDataURL(file);
+    });
 
     // 削除ボタン
     const deleteButton = document.createElement('button');
@@ -285,8 +352,8 @@ export class VirtualLeverManagerComponent {
     deleteButton.title = '削除';
     deleteButton.addEventListener('click', () => this._onRemoveLever(lever.id));
 
-    buttonGroup.appendChild(iconButton);
     buttonGroup.appendChild(deleteButton);
+    buttonGroup.appendChild(fileInput);
     topRow.appendChild(idContainer);
     topRow.appendChild(buttonGroup);
 
