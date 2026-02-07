@@ -57,6 +57,22 @@ export class VirtualLeverService {
         // 仮想レバーの初期値も発行
         savedLevers.forEach(lever => {
           this._emitValueUpdate(lever.id, lever.initialValue);
+
+          // アイコンが設定されている場合、アイコン変更イベントを発行
+          if (lever.iconUrl) {
+            this.eventBus.emit(EventTypes.DEVICE_ICON_CHANGED, {
+              deviceId: lever.id,
+              iconUrl: lever.iconUrl
+            });
+          }
+
+          // 名前が設定されている場合、名前変更イベントを発行
+          if (lever.name) {
+            this.eventBus.emit(EventTypes.DEVICE_NAME_CHANGED, {
+              deviceId: lever.id,
+              newName: lever.name
+            });
+          }
         });
 
         this.logger.debug(`Emitted VIRTUAL_LEVER_MODE_ENABLED (restored) with ${savedLevers.length} levers`);

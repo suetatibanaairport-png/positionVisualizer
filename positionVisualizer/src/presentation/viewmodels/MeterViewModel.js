@@ -132,6 +132,34 @@ export class MeterViewModel {
       }
     });
 
+    // デバイスアイコン変更イベントの監視
+    this.eventEmitter.on(EventTypes.DEVICE_ICON_CHANGED, (event) => {
+      if (!event || !event.deviceId) return;
+
+      const deviceId = event.deviceId;
+      // デバイスがまだマッピングされていない場合は割り当てる
+      const deviceIndex = this.getOrAssignDeviceIndex(deviceId);
+
+      if (deviceIndex >= 0) {
+        this.logger.debug(`デバイスアイコン変更イベント: ${deviceId}, インデックス: ${deviceIndex}`);
+        this.setIcon(deviceIndex, event.iconUrl);
+      }
+    });
+
+    // デバイス名変更イベントの監視
+    this.eventEmitter.on(EventTypes.DEVICE_NAME_CHANGED, (event) => {
+      if (!event || !event.deviceId) return;
+
+      const deviceId = event.deviceId;
+      // デバイスがまだマッピングされていない場合は割り当てる
+      const deviceIndex = this.getOrAssignDeviceIndex(deviceId);
+
+      if (deviceIndex >= 0) {
+        this.logger.debug(`デバイス名変更イベント: ${deviceId}, インデックス: ${deviceIndex}`);
+        this.setName(deviceIndex, event.newName);
+      }
+    });
+
     // 再生モード状態管理（表示のみに使用）
     this.eventEmitter.on('playbackStarted', () => {
       this.logger.debug('再生開始イベントを受信しました');
@@ -163,6 +191,17 @@ export class MeterViewModel {
     this.eventEmitter.on(EventTypes.VIRTUAL_LEVER_MODE_DISABLED, () => {
       this.logger.debug('仮想レバーモード無効化イベントを受信しました');
       this.isVirtualMode = false;
+    });
+
+    // 仮想レバー削除イベントの監視
+    this.eventEmitter.on(EventTypes.VIRTUAL_LEVER_REMOVED, (event) => {
+      if (!event || !event.leverId) return;
+
+      const leverId = event.leverId;
+      this.logger.debug(`仮想レバー削除イベントを受信: ${leverId}`);
+
+      // メーター表示から削除
+      this.removeDevice(leverId);
     });
 
     // 記録用: デバイスマッピングのリクエストに応答

@@ -223,6 +223,12 @@ class AppBootstrap {
       virtualLeverServiceLogger
     );
 
+    // メインウィンドウの場合、OverlaySyncServiceにVirtualLeverServiceを設定
+    if (!this.options.isOverlay && infraComponents.overlaySyncService) {
+      infraComponents.overlaySyncService.setVirtualLeverService(virtualLeverService);
+      this.logger.debug('VirtualLeverService registered with OverlaySyncService');
+    }
+
     return {
       deviceService,
       monitorUseCase,
