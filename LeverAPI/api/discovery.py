@@ -25,8 +25,13 @@ DEVICE_TIMEOUT = 30  # デバイスがタイムアウトするまでの秒数
 class LeverDiscovery:
     """レバーデバイスのディスカバリーを管理するクラス"""
 
-    def __init__(self):
-        """ディスカバリーマネージャーの初期化"""
+    def __init__(self, udp_port=None):
+        """ディスカバリーマネージャーの初期化
+
+        Args:
+            udp_port (int, optional): UDPディスカバリーポート。Noneの場合はデフォルト値を使用
+        """
+        self.udp_port = udp_port if udp_port is not None else UDP_PORT
         self.is_scanning = False
         self.devices = {}  # 検出されたデバイスの辞書 {device_id: device_info}
 
@@ -64,8 +69,8 @@ class LeverDiscovery:
                 # 複数回のブロードキャスト送信（より確実な検出のため）
                 for attempt in range(retries):
                     # ディスカバリーパケットの送信
-                    sock.sendto(DISCOVERY_TOKEN.encode(), (BROADCAST_IP, UDP_PORT))
-                    logger.debug(f"ディスカバリーパケット送信: 試行 {attempt + 1}/{retries}")
+                    sock.sendto(DISCOVERY_TOKEN.encode(), (BROADCAST_IP, self.udp_port))
+                    logger.debug(f"ディスカバリーパケット送信: 試行 {attempt + 1}/{retries}, port: {self.udp_port}")
 
                     # 応答の待機と処理
                     broadcast_time = time.time()

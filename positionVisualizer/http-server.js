@@ -7,6 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import url from 'url';
 import { fileURLToPath } from 'url';
+import { loadConfig } from './tools/load-config.js';
 
 // 実行環境の判定を強化
 const isNode = typeof process !== 'undefined' && process.versions && process.versions.node;
@@ -24,8 +25,10 @@ console.log(`実行環境: ${isNode ? 'Node.js' : isBun ? 'Bun' : process.argv[0
 console.log(`コンパイル済み判定: ${isCompiled}`);
 console.log(`バンドルモード: ${BUNDLE_MODE}`);
 
-const PORT = Number(process.env.HTTP_PORT || 8000);
-const HOST = process.env.HTTP_HOST || '127.0.0.1';
+// Load configuration
+const config = loadConfig();
+const PORT = Number(config.http?.port || process.env.HTTP_PORT || 8000);
+const BIND = config.http?.bind || process.env.HTTP_BIND || '0.0.0.0';
 
 // ESM環境では__dirnameが使えないので代替手段を使用
 const __filename = fileURLToPath(import.meta.url);
@@ -472,8 +475,8 @@ const main = async () => {
     });
   });
 
-  server.listen(PORT, HOST, () => {
-    console.log(`HTTP server listening on http://${HOST}:${PORT}`);
+  server.listen(PORT, BIND, () => {
+    console.log(`HTTP server listening on http://${BIND}:${PORT}`);
     if (resources) {
       console.log(`バンドルリソースから配信中 (ファイルシステムアクセスなし)`);
     } else {
@@ -491,8 +494,8 @@ const main = async () => {
       // 別のポートを試す
       server.close();
       const newPort = PORT + 1;
-      server.listen(newPort, HOST, () => {
-        console.log(`代替ポート ${newPort} で起動しました: http://${HOST}:${newPort}`);
+      server.listen(newPort, BIND, () => {
+        console.log(`代替ポート ${newPort} で起動しました: http://${BIND}:${newPort}`);
         console.log(`環境変数 HTTP_PORT=${newPort} を設定することで、このポートを永続的に使用できます`);
       });
     } else {

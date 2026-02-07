@@ -116,6 +116,41 @@ const httpServerCode = `// 自動生成されたバンドルHTTPサーバー
 
 import http from 'http';
 import path from 'path';
+import fs from 'fs';
+
+// Configuration loader (inlined)
+function loadConfig() {
+  const searchPaths = [
+    path.join(process.cwd(), 'config.json'),
+    path.join(process.cwd(), '..', 'config.json'),
+    path.join(process.cwd(), '..', '..', 'config.json'),
+  ];
+
+  if (process.execPath) {
+    const execDir = path.dirname(process.execPath);
+    searchPaths.push(
+      path.join(execDir, 'config.json'),
+      path.join(execDir, '..', 'config.json'),
+      path.join(execDir, '..', '..', 'config.json')
+    );
+  }
+
+  for (const configPath of searchPaths) {
+    if (fs.existsSync(configPath)) {
+      try {
+        const configData = fs.readFileSync(configPath, 'utf8');
+        const config = JSON.parse(configData);
+        console.log(\`[Config] Loaded from: \${configPath}\`);
+        return config;
+      } catch (error) {
+        console.error(\`[Config] Failed to parse \${configPath}: \${error.message}\`);
+      }
+    }
+  }
+
+  console.log('[Config] No config.json found, using defaults');
+  return {};
+}
 
 // 実行環境の判定
 const isNode = typeof process !== 'undefined' && process.versions && process.versions.node;
@@ -132,8 +167,10 @@ console.log(\`実行環境: \${isNode ? 'Node.js' : isBun ? 'Bun' : process.argv
 console.log(\`コンパイル済み判定: \${isCompiled}\`);
 console.log(\`バンドルモード: true\`);
 
-const PORT = Number(process.env.HTTP_PORT || 8000);
-const HOST = process.env.HTTP_HOST || '127.0.0.1';
+// Load configuration
+const config = loadConfig();
+const PORT = Number(config.http?.port || process.env.HTTP_PORT || 8000);
+const BIND = config.http?.bind || process.env.HTTP_BIND || '0.0.0.0';
 
 // バンドルされた静的ファイル
 const BUNDLED_FILES = ${fileContentsJSON};
@@ -233,8 +270,8 @@ const server = http.createServer((req, res) => {
   serveFromBundle(pathname.startsWith('/') ? pathname.substring(1) : pathname, res);
 });
 
-server.listen(PORT, HOST, () => {
-  console.log(\`HTTP server listening on http://\${HOST}:\${PORT}\`);
+server.listen(PORT, BIND, () => {
+  console.log(\`HTTP server listening on http://\${BIND}:\${PORT}\`);
   console.log(\`バンドルリソースから配信中 (ファイルシステムアクセスなし)\`);
 });
 
@@ -247,8 +284,8 @@ server.on('error', (err) => {
     // 別のポートを試す
     server.close();
     const newPort = PORT + 1;
-    server.listen(newPort, HOST, () => {
-      console.log(\`代替ポート \${newPort} で起動しました: http://\${HOST}:\${newPort}\`);
+    server.listen(newPort, BIND, () => {
+      console.log(\`代替ポート \${newPort} で起動しました: http://\${BIND}:\${newPort}\`);
       console.log(\`環境変数 HTTP_PORT=\${newPort} を設定することで、このポートを永続的に使用できます\`);
     });
   } else {

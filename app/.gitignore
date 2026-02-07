@@ -4,3 +4,4 @@ Windows/*
 !*.bat
 !*.ps1
 *.zip
+!config.json

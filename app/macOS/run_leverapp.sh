@@ -11,6 +11,22 @@ export LC_ALL="en_US.UTF-8"
 APP_DIR=$(dirname "$0")
 cd "$APP_DIR"
 
+# config.jsonから設定を読み込む
+CONFIG_FILE="$APP_DIR/config.json"
+HOSTNAME="localhost"
+HTTP_PORT="8000"
+
+if [ -f "$CONFIG_FILE" ]; then
+  # hostname を取得
+  HOSTNAME=$(grep '"hostname"' "$CONFIG_FILE" | sed 's/.*:.*"\([^"]*\)".*/\1/' | tr -d ' ')
+  # http.port を取得
+  HTTP_PORT=$(awk '/"http"/{f=1} f && /"port"/{gsub(/[^0-9]/,"",$2);print $2;exit}' "$CONFIG_FILE")
+fi
+
+# デフォルト値にフォールバック
+HOSTNAME="${HOSTNAME:-localhost}"
+HTTP_PORT="${HTTP_PORT:-8000}"
+
 # ログディレクトリの作成
 LOG_DIR="$APP_DIR/logs"
 mkdir -p "$LOG_DIR"
@@ -187,8 +203,7 @@ echo "        すべてのサービスが起動しました"
 echo "======================================="
 echo ""
 echo "アクセス:"
-echo "- HTTP: http://localhost:8000"
-echo "- WebSocket: ws://localhost:8123"
+echo "- HTTP: http://$HOSTNAME:$HTTP_PORT"
 echo ""
 echo "ログファイル:"
 echo "- LeverAPI: $API_LOG"
@@ -210,7 +225,7 @@ echo "リソース監視プロセス開始 (PID: $MONITOR_PID)"
 sleep 3
 
 # メインページをデフォルトブラウザで開く
-open "http://localhost:8000"
+open "http://$HOSTNAME:$HTTP_PORT"
 
 # プロセスの監視ループ
 while true; do
