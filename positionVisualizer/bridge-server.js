@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { io } from 'socket.io-client';
 import { fileURLToPath } from 'url';
+import { loadConfig } from './tools/load-config.js';
 
 // ESM環境では__dirnameが使えないので代替手段を使用
 const __filename = fileURLToPath(import.meta.url);
@@ -19,8 +20,13 @@ let latest = {
   ts: Date.now()
 };
 
-// LeverAPI integration
-const LEVER_API_URL = process.env.LEVER_API_URL || 'http://127.0.0.1:5001';
+// Load configuration
+const config = loadConfig();
+
+// LeverAPI integration - build URL from hostname and port
+const hostname = config.network?.hostname || 'localhost';
+const apiPort = config.leverApi?.port || 5001;
+const LEVER_API_URL = process.env.LEVER_API_URL || `http://${hostname}:${apiPort}`;
 console.log('LeverAPI URL:', LEVER_API_URL);
 
 // デバイスID → インデックスの動的マッピング
@@ -288,10 +294,10 @@ wss.on('connection', (ws) => {
   });
 });
 
-const PORT = Number(process.env.BRIDGE_PORT || 8123);
-const HOST = process.env.BRIDGE_HOST || '127.0.0.1';
-server.listen(PORT, HOST, () => {
-  console.log(`bridge listening ws://${HOST}:${PORT}`);
+const PORT = Number(config.bridge?.port || process.env.BRIDGE_PORT || 8123);
+const BIND = config.bridge?.bind || process.env.BRIDGE_BIND || '0.0.0.0';
+server.listen(PORT, BIND, () => {
+  console.log(`bridge listening ws://${BIND}:${PORT}`);
 });
 
 // エラーハンドリングの強化
@@ -301,8 +307,8 @@ server.on('error', (err) => {
     console.error(`ポート ${PORT} は既に使用されています。別のポートを試します...`);
     server.close();
     const newPort = PORT + 1;
-    server.listen(newPort, HOST, () => {
-      console.log(`代替ポート ${newPort} で起動しました: ws://${HOST}:${newPort}`);
+    server.listen(newPort, BIND, () => {
+      console.log(`代替ポート ${newPort} で起動しました: ws://${BIND}:${newPort}`);
       console.log(`環境変数 BRIDGE_PORT=${newPort} を設定することで、このポートを永続的に使用できます`);
     });
   } else {

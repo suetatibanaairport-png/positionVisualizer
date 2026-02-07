@@ -29,6 +29,7 @@ import orjson
 from api.discovery import LeverDiscovery
 from api.device_manager import DeviceManager
 from api.transformers import transform_device_for_frontend
+from config_loader import load_config
 
 # ロギング設定
 logging.basicConfig(
@@ -61,8 +62,13 @@ NOTIFICATION_THRESHOLDS = {
 LAST_NOTIFICATION_TIMES = {}  # デバイスごとの最後の通知時間
 LAST_KNOWN_DEVICE_IDS = set()  # 前回のデバイスIDセット（接続/切断検出用）
 
+# 設定読み込み
+config = load_config()
+lever_config = config.get('leverApi', {})
+discovery_port = lever_config.get('discoveryPort') or int(os.environ.get('DISCOVERY_PORT', 4210))
+
 # ディスカバリーとデバイスマネージャーの初期化
-discovery = LeverDiscovery()
+discovery = LeverDiscovery(udp_port=discovery_port)
 device_manager = DeviceManager(discovery)
 
 # APIレスポンスの標準化関数
@@ -1108,10 +1114,17 @@ def realtime_monitor():
 
 # メイン実行
 if __name__ == '__main__':
+    # Apply configuration with fallback to environment variables and defaults
+    api_port = lever_config.get('port') or int(os.environ.get('LEVER_API_PORT', 5001))
+    api_host = lever_config.get('bind') or os.environ.get('LEVER_API_BIND', '0.0.0.0')
+
     # 開発モードでの起動
     print("====================================================")
     print(" PedanticLeverController BFF API サーバー")
     print(" (C) 2023 Pedantic Co., Ltd.")
+    print("====================================================")
+    print(f" Host: {api_host}")
+    print(f" Port: {api_port}")
     print("====================================================")
 
     # アプリケーション初期化を実行（起動時に1回だけ）
@@ -1120,4 +1133,4 @@ if __name__ == '__main__':
     # WebSocketサーバーとして起動
     # PyInstallerでコンパイルされた場合はデバッグモードを無効化
     is_frozen = getattr(sys, 'frozen', False)
-    socketio.run(app, host='0.0.0.0', port=5001, debug=(not is_frozen), allow_unsafe_werkzeug=True)
+    socketio.run(app, host=api_host, port=api_port, debug=(not is_frozen), allow_unsafe_werkzeug=True)
