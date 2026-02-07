@@ -72,6 +72,15 @@ export class VirtualLeverManager {
 
     this.eventBus.on(EventTypes.VIRTUAL_LEVER_UPDATED, (data) => {
       this.logger.debug(`Virtual lever updated: ${data.lever.id}`);
+
+      // iconUrlが更新された場合、MeterViewModelに直接反映
+      if (data.lever && data.lever.iconUrl && this.meterViewModel) {
+        const deviceIndex = this.meterViewModel.getDeviceIndex(data.lever.id);
+        if (deviceIndex >= 0) {
+          this.meterViewModel.setIcon(deviceIndex, data.lever.iconUrl);
+          this.logger.debug(`Virtual lever icon updated in meter: ${data.lever.id}, index: ${deviceIndex}`);
+        }
+      }
     });
   }
 
