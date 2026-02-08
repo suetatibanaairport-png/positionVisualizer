@@ -476,6 +476,11 @@ const main = async () => {
   });
 
   server.listen(PORT, BIND, () => {
+    console.log('========================================');
+    console.log('HTTP Server 起動設定:');
+    console.log(`  Bind: ${BIND}`);
+    console.log(`  Port: ${PORT}`);
+    console.log('========================================');
     console.log(`HTTP server listening on http://${BIND}:${PORT}`);
     if (resources) {
       console.log(`バンドルリソースから配信中 (ファイルシステムアクセスなし)`);

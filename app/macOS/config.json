@@ -6,7 +6,8 @@
     "port": 5001,
     "bind": "0.0.0.0",
     "discoveryPort": 4210,
-    "pollInterval": 1000
+    "pollInterval": 1000,
+    "broadcastAddress": "192.168.11.255"
   },
   "bridge": {
     "port": 8123,
