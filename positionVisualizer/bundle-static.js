@@ -258,7 +258,7 @@ const server = http.createServer((req, res) => {
   }
 
   // Parse URL
-  const parsedUrl = new URL(req.url, \`http://\${HOST}:\${PORT}\`);
+  const parsedUrl = new URL(req.url, \`http://\${BIND}:\${PORT}\`);
   let pathname = parsedUrl.pathname;
 
   // Default to index.html for root

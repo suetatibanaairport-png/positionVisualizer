@@ -296,7 +296,14 @@ wss.on('connection', (ws) => {
 
 const PORT = Number(config.bridge?.port || process.env.BRIDGE_PORT || 8123);
 const BIND = config.bridge?.bind || process.env.BRIDGE_BIND || '0.0.0.0';
+
 server.listen(PORT, BIND, () => {
+  console.log('========================================');
+  console.log('Bridge Server 起動設定:');
+  console.log(`  Bind: ${BIND}`);
+  console.log(`  Port: ${PORT}`);
+  console.log(`  LeverAPI URL: ${LEVER_API_URL}`);
+  console.log('========================================');
   console.log(`bridge listening ws://${BIND}:${PORT}`);
 });
 

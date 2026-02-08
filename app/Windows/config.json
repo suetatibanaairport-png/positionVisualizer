@@ -6,6 +6,7 @@
     "port": 5001,
     "bind": "0.0.0.0",
     "discoveryPort": 4210,
+    "broadcastAddress": "255.255.255.255",
     "pollInterval": 1000
   },
   "bridge": {
