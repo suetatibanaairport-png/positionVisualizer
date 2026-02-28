@@ -232,6 +232,7 @@ int Calibration::mapTo0_100(int rawValue)
   else
   {
     // 未キャリブレーションの場合、0-1023を0-100に変換
+    DEBUG_INFO("未キャリブレーションの値をマッピングします");
     result = map(rawValue, DEFAULT_MIN, DEFAULT_MAX, MIN_VALUE, MAX_VALUE);
   }
 

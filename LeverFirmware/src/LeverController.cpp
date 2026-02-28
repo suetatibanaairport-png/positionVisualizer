@@ -302,14 +302,10 @@ int LeverController::getRawValue()
 // キャリブレーション情報を取得
 void LeverController::getCalibrationInfo(int& minVal, int& midVal, int& maxVal, bool& isCalibrated)
 {
-  int min, mid, max;
-  bool calibrated;
-  _calibration.loadCalibration(min, mid, max, calibrated);
-
-  minVal = min;
-  midVal = mid;
-  maxVal = max;
-  isCalibrated = calibrated;
+  minVal = _calibration.getCalibMinValue();
+  midVal = _calibration.getCalibMidValue();
+  maxVal = _calibration.getCalibMaxValue();
+  isCalibrated = _calibration.isCalibrated();
 }
 
 // 静的メンバの初期化
