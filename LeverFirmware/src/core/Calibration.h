@@ -63,6 +63,12 @@ public:
   // キャリブレーション最大値の取得
   int getCalibMaxValue();
 
+  // キャリブレーション済みかどうかを取得
+  bool isCalibrated();
+
+  // キャリブレーション済みフラグのセット
+  void setIsCalibrated(bool calibrated);
+
 private:
   CalibrationData _calibData;
   bool _dataLoaded;

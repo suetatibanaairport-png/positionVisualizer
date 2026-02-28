@@ -227,6 +227,7 @@ void LeverController::endCalibration()
       _ledDisplay.setErrorCode(1); // エラーコード1: キャリブレーション範囲不足
     }
     */
+    _calibration.setIsCalibrated(true);
     _calibration.saveCalibration();
     _ledDisplay.setMode(SingleLedDisplay::CALIBRATED);
     while( _ledDisplay.getMode() == SingleLedDisplay::CALIBRATED){

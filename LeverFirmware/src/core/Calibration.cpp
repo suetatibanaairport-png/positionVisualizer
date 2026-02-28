@@ -101,6 +101,18 @@ int Calibration::getCalibMaxValue()
   return _calibData.maxValue;
 }
 
+// キャリブレーション済みかどうかの取得
+bool Calibration::isCalibrated()
+{
+  return _calibData.isCalibrated;
+}
+
+// キャリブレーション済みフラグのセット
+void Calibration::setIsCalibrated(bool calibrated)
+{
+  _calibData.isCalibrated = calibrated;
+}
+
 // キャリブレーション値の保存
 bool Calibration::saveCalibration()
 {

@@ -51,8 +51,16 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')  # We
 SIMULATION_MODE = False
 SIMULATION_DEVICE_COUNT = 3  # シミュレーションデバイスのデフォルト数
 
+# 設定読み込み
+config = load_config()
+lever_config = config.get('leverApi', {})
+discovery_port = lever_config.get('discoveryPort') or int(os.environ.get('DISCOVERY_PORT', 4210))
+broadcast_address = lever_config.get('broadcastAddress') or os.environ.get('BROADCAST_ADDRESS', '255.255.255.255')
+
 # WebSocketリアルタイムデータ更新設定
-UPDATE_INTERVAL = 0.033  # 約33ミリ秒ごとに更新（WebSocket通知用） - 30Hz
+# config.jsonのpollInterval(ミリ秒)をポーリング間隔として使用（最小33ms）
+_poll_interval_ms = lever_config.get('pollInterval', 100)
+UPDATE_INTERVAL = max(0.033, _poll_interval_ms / 1000.0)
 LAST_DEVICE_VALUES = {}  # 前回のデバイス値を格納（変更検出用）
 NOTIFICATION_THRESHOLDS = {
     'value_change': 0.1,  # 値の変化が0.1以上の場合に通知（ほぼ全ての変化を通知）
@@ -61,12 +69,6 @@ NOTIFICATION_THRESHOLDS = {
 }
 LAST_NOTIFICATION_TIMES = {}  # デバイスごとの最後の通知時間
 LAST_KNOWN_DEVICE_IDS = set()  # 前回のデバイスIDセット（接続/切断検出用）
-
-# 設定読み込み
-config = load_config()
-lever_config = config.get('leverApi', {})
-discovery_port = lever_config.get('discoveryPort') or int(os.environ.get('DISCOVERY_PORT', 4210))
-broadcast_address = lever_config.get('broadcastAddress') or os.environ.get('BROADCAST_ADDRESS', '255.255.255.255')
 
 # ディスカバリーとデバイスマネージャーの初期化
 discovery = LeverDiscovery(udp_port=discovery_port, broadcast_address=broadcast_address)
